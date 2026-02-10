@@ -1,0 +1,46 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: 'Assistant', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --color-primary: #ff3f6c;
+  /* Myntra Pink */
+  --color-primary-dark: #d43256;
+  --color-text-main: #282c3f;
+  --color-text-muted: #94969f;
+  --color-bg-page: #ffffff;
+}
+
+@layer base {
+  body {
+    @apply font-sans text-[--color-text-main] bg-[--color-bg-page] antialiased overflow-x-hidden;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    @apply font-bold;
+  }
+}
+
+@layer components {
+  .site-shell {
+    @apply max-w-full mx-auto px-4 sm:px-6 lg:px-[5px];
+  }
+
+  .section-gap {
+    @apply py-6 lg:py-8;
+  }
+}
+
+/* Custom Scrollbar for horizontal scrolling */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}

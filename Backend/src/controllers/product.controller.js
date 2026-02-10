@@ -1,0 +1,1191 @@
+const { z } = require('zod');
+
+const { getPrisma } = require('../db/prismaClient');
+const { sendSuccess, sendError } = require('../utils/response');
+
+const MEDIA_TYPES = ['IMAGE', 'VIDEO', 'MODEL_3D', 'EXTERNAL_VIDEO'];
+const INVENTORY_POLICIES = ['DENY', 'CONTINUE'];
+const WEIGHT_UNITS = ['GRAMS', 'KILOGRAMS', 'OUNCES', 'POUNDS'];
+const PRODUCT_STATUS = ['ACTIVE', 'DRAFT', 'ARCHIVED'];
+const APPAREL_TYPES = ['TOP', 'BOTTOM', 'SHOES', 'ACCESSORY', 'OTHER'];
+const METAFIELD_SETS = ['CATEGORY', 'PRODUCT'];
+
+const mediaSchema = z.object({
+  url: z.string().min(1),
+  alt: z.string().optional().nullable(),
+  type: z.enum(MEDIA_TYPES).optional(),
+  position: z.number().int().optional(),
+});
+
+const optionSchema = z.object({
+  name: z.string().min(1),
+  values: z.array(z.string().min(1)).min(1),
+});
+
+const metafieldSchema = z.object({
+  namespace: z.string().min(1),
+  key: z.string().min(1),
+  type: z.string().min(1),
+  value: z.any(),
+  description: z.string().optional(),
+  set: z.enum(METAFIELD_SETS).optional(),
+});
+
+const variantSchema = z.object({
+  title: z.string().optional(),
+  sku: z.string().optional(),
+  barcode: z.string().optional(),
+  price: z.number().optional(),
+  compareAtPrice: z.number().optional(),
+  costPerItem: z.number().optional(),
+  unitPrice: z.number().optional(),
+  unitPriceMeasurement: z.any().optional(),
+  taxable: z.boolean().optional(),
+  trackInventory: z.boolean().optional(),
+  inventoryPolicy: z.enum(INVENTORY_POLICIES).optional(),
+  requiresShipping: z.boolean().optional(),
+  weight: z.number().optional(),
+  weightUnit: z.enum(WEIGHT_UNITS).optional(),
+  originCountryCode: z.string().optional(),
+  hsCode: z.string().optional(),
+  optionValues: z.record(z.string()).optional(),
+  imageUrl: z.string().optional(),
+  inventory: z
+    .object({
+      location: z.string().optional(),
+      available: z.number().int().optional(),
+    })
+    .optional(),
+  metafields: z.array(metafieldSchema).optional(),
+});
+
+const productSchema = z.object({
+  title: z.string().min(1),
+  handle: z.string().min(1),
+  descriptionHtml: z.string().optional(),
+  status: z.enum(PRODUCT_STATUS).optional(),
+  vendor: z.string().optional(),
+  productType: z.string().optional(),
+  category: z.string().optional(),
+  categoryTaxonomyId: z.string().optional(),
+  apparelType: z.enum(APPAREL_TYPES).optional(),
+  templateSuffix: z.string().optional(),
+  tags: z.array(z.string().min(1)).optional(),
+  subscriptionsEnabled: z.boolean().optional(),
+  publishedAt: z.coerce.date().optional(),
+  collections: z.array(z.string().min(1)).optional(),
+  collectionHandles: z.array(z.string().min(1)).optional(),
+  media: z.array(mediaSchema).optional(),
+  options: z.array(optionSchema).optional(),
+  variants: z.array(variantSchema).optional(),
+  metafields: z.array(metafieldSchema).optional(),
+});
+
+const toNumber = (value) => {
+  if (value === null || value === undefined || value === '') return undefined;
+  const num = Number(value);
+  return Number.isFinite(num) ? num : undefined;
+};
+
+const toBoolean = (value) => {
+  if (value === null || value === undefined || value === '') return undefined;
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value > 0;
+  const normalized = String(value).trim().toLowerCase();
+  if (!normalized) return undefined;
+  return ['true', 'yes', '1', 'y'].includes(normalized);
+};
+
+const slugify = (value) => {
+  if (!value) return undefined;
+  return value
+    .toString()
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+};
+
+const normalizeTags = (value) => {
+  if (!value) return [];
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item).trim()).filter(Boolean);
+  }
+  if (typeof value === 'string') {
+    return value
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+  return [];
+};
+
+const normalizeMedia = (media, fallback = []) => {
+  if (!media) return fallback;
+  if (Array.isArray(media)) {
+    return media
+      .map((item, index) => {
+        if (!item) return null;
+        if (typeof item === 'string') {
+          return { url: item, position: index };
+        }
+        return {
+          url: item.url ?? item.src ?? item.id ?? '',
+          alt: item.alt ?? item.altText ?? null,
+          type: item.type && MEDIA_TYPES.includes(item.type) ? item.type : undefined,
+          position: item.position ?? index,
+        };
+      })
+      .filter((item) => item?.url);
+  }
+  return fallback;
+};
+const normalizeOptions = (options) => {
+  if (!Array.isArray(options)) return undefined;
+  const out = options
+    .map((option) => {
+      if (!option) return null;
+      const name = String(option.name ?? '').trim();
+      const values = Array.isArray(option.values)
+        ? option.values.map((value) => String(value).trim()).filter(Boolean)
+        : typeof option.values === 'string'
+        ? option.values.split(',').map((value) => value.trim()).filter(Boolean)
+        : [];
+      if (!name || values.length === 0) return null;
+      return { name, values };
+    })
+    .filter(Boolean);
+  return out.length ? out : undefined;
+};
+
+const normalizeVariants = (variants) => {
+  if (!Array.isArray(variants)) return undefined;
+  const out = variants
+    .map((variant) => {
+      if (!variant) return null;
+      const optionValues = variant.optionValues ?? variant.options ?? {};
+      const normalizedOptionValues = {};
+      if (Array.isArray(optionValues)) {
+        optionValues.forEach((entry) => {
+          if (!entry?.name) return;
+          normalizedOptionValues[String(entry.name)] = String(entry.value ?? '');
+        });
+      } else if (optionValues && typeof optionValues === 'object') {
+        Object.entries(optionValues).forEach(([key, value]) => {
+          if (!key) return;
+          normalizedOptionValues[String(key)] = String(value ?? '');
+        });
+      }
+
+      return {
+        title: variant.title ? String(variant.title) : undefined,
+        sku: variant.sku ? String(variant.sku) : undefined,
+        barcode: variant.barcode ? String(variant.barcode) : undefined,
+        price: toNumber(variant.price),
+        compareAtPrice: toNumber(variant.compareAtPrice),
+        costPerItem: toNumber(variant.costPerItem),
+        unitPrice: toNumber(variant.unitPrice),
+        unitPriceMeasurement: variant.unitPriceMeasurement,
+        taxable: toBoolean(variant.taxable),
+        trackInventory: toBoolean(variant.trackInventory),
+        inventoryPolicy: (() => {
+          if (!variant.inventoryPolicy) return undefined;
+          const policy = String(variant.inventoryPolicy).toUpperCase();
+          return INVENTORY_POLICIES.includes(policy) ? policy : undefined;
+        })(),
+        requiresShipping: toBoolean(variant.requiresShipping),
+        weight: toNumber(variant.weight),
+        weightUnit: (() => {
+          if (!variant.weightUnit) return undefined;
+          const unit = String(variant.weightUnit).toUpperCase();
+          return WEIGHT_UNITS.includes(unit) ? unit : undefined;
+        })(),
+        originCountryCode: variant.originCountryCode
+          ? String(variant.originCountryCode)
+          : undefined,
+        hsCode: variant.hsCode ? String(variant.hsCode) : undefined,
+        optionValues: Object.keys(normalizedOptionValues).length
+          ? normalizedOptionValues
+          : undefined,
+        imageUrl: variant.imageUrl ?? variant.image ?? undefined,
+        inventory: variant.inventory
+          ? {
+              location: variant.inventory.location
+                ? String(variant.inventory.location)
+                : undefined,
+              available: toNumber(variant.inventory.available),
+            }
+          : undefined,
+        metafields: Array.isArray(variant.metafields)
+          ? variant.metafields
+              .map((field) => ({
+                namespace: String(field?.namespace || ''),
+                key: String(field?.key || ''),
+                type: String(field?.type || ''),
+                value: field?.value,
+                description: field?.description,
+              }))
+              .filter((field) => field.namespace && field.key && field.type)
+          : undefined,
+      };
+    })
+    .filter(Boolean);
+  return out.length ? out : undefined;
+};
+
+const deriveOptionsFromVariants = (variants) => {
+  if (!Array.isArray(variants) || !variants.length) return undefined;
+  const optionMap = new Map();
+  variants.forEach((variant) => {
+    const values = variant.optionValues || {};
+    Object.entries(values).forEach(([name, value]) => {
+      if (!name) return;
+      if (!optionMap.has(name)) {
+        optionMap.set(name, new Set());
+      }
+      if (value !== undefined && value !== null && String(value).trim() !== '') {
+        optionMap.get(name).add(String(value));
+      }
+    });
+  });
+  if (optionMap.size === 0) return undefined;
+  return Array.from(optionMap.entries()).map(([name, values], index) => ({
+    name,
+    values: Array.from(values),
+    position: index + 1,
+  }));
+};
+
+const normalizeProductInput = (raw = {}, { partial = false } = {}) => {
+  const normalized = { ...raw };
+
+  if (raw.title !== undefined) normalized.title = String(raw.title).trim();
+  if (raw.handle !== undefined) {
+    normalized.handle = String(raw.handle).trim() || slugify(raw.title);
+  } else if (!partial && raw.title) {
+    normalized.handle = slugify(raw.title);
+  }
+
+  if (raw.descriptionHtml !== undefined) {
+    normalized.descriptionHtml = String(raw.descriptionHtml);
+  } else if (raw.description !== undefined) {
+    normalized.descriptionHtml = String(raw.description);
+  }
+
+  if (raw.status !== undefined) {
+    const status = String(raw.status).toUpperCase();
+    if (PRODUCT_STATUS.includes(status)) normalized.status = status;
+  }
+
+  if (raw.vendor !== undefined) normalized.vendor = String(raw.vendor).trim();
+  if (raw.productType !== undefined) normalized.productType = String(raw.productType).trim();
+  if (raw.category !== undefined) normalized.category = String(raw.category).trim();
+  if (raw.categoryTaxonomyId !== undefined) {
+    normalized.categoryTaxonomyId = String(raw.categoryTaxonomyId).trim();
+  }
+  if (raw.apparelType !== undefined) {
+    const type = String(raw.apparelType).toUpperCase();
+    if (APPAREL_TYPES.includes(type)) normalized.apparelType = type;
+  }
+  if (raw.templateSuffix !== undefined) normalized.templateSuffix = String(raw.templateSuffix).trim();
+  if (raw.subscriptionsEnabled !== undefined) {
+    normalized.subscriptionsEnabled = Boolean(raw.subscriptionsEnabled);
+  }
+  if (raw.publishedAt !== undefined) {
+    normalized.publishedAt = raw.publishedAt;
+  }
+
+  if (raw.tags !== undefined) normalized.tags = normalizeTags(raw.tags);
+
+  if (raw.collections !== undefined) {
+    normalized.collections = Array.isArray(raw.collections)
+      ? raw.collections.map((id) => String(id)).filter(Boolean)
+      : normalizeTags(raw.collections);
+  }
+
+  if (raw.collectionHandles !== undefined) {
+    normalized.collectionHandles = Array.isArray(raw.collectionHandles)
+      ? raw.collectionHandles.map((id) => String(id)).filter(Boolean)
+      : normalizeTags(raw.collectionHandles);
+  }
+
+  const media = normalizeMedia(raw.media ?? raw.images);
+  if (media.length) normalized.media = media;
+
+  const options = normalizeOptions(raw.options);
+  if (options) normalized.options = options;
+
+  const variants = normalizeVariants(raw.variants ?? raw.variantList);
+  if (variants) normalized.variants = variants;
+
+  if (!normalized.options && normalized.variants) {
+    const derived = deriveOptionsFromVariants(normalized.variants);
+    if (derived) normalized.options = derived.map(({ name, values }) => ({ name, values }));
+  }
+
+  if (Array.isArray(raw.metafields)) {
+    normalized.metafields = raw.metafields
+      .map((field) => ({
+        namespace: String(field?.namespace || ''),
+        key: String(field?.key || ''),
+        type: String(field?.type || ''),
+        value: field?.value,
+        description: field?.description,
+        set: field?.set && METAFIELD_SETS.includes(String(field.set)) ? String(field.set) : undefined,
+      }))
+      .filter((field) => field.namespace && field.key && field.type);
+  }
+
+  return normalized;
+};
+
+const parseProductInput = (raw, { partial = false } = {}) => {
+  const normalized = normalizeProductInput(raw, { partial });
+  const schema = partial ? productSchema.partial() : productSchema;
+  return schema.parse(normalized);
+};
+
+const productInclude = {
+  collections: {
+    include: { collection: true },
+    orderBy: { position: 'asc' },
+  },
+  media: true,
+  options: true,
+  variants: {
+    include: {
+      inventoryLevels: { include: { location: true } },
+      image: true,
+      metafields: true,
+    },
+    orderBy: { position: 'asc' },
+  },
+  metafields: true,
+  reviews: {
+    where: { status: 'PUBLISHED' },
+    orderBy: { createdAt: 'desc' },
+    include: {
+      media: true,
+      user: {
+        select: { id: true, name: true, email: true },
+      },
+    },
+  },
+  _count: {
+    select: {
+      reviews: { where: { status: 'PUBLISHED' } },
+    },
+  },
+};
+
+const toDecimalString = (value) =>
+  value !== undefined && value !== null ? value.toString() : null;
+
+const mapCollections = (product) =>
+  Array.isArray(product.collections)
+    ? product.collections.map((entry) => entry.collection).filter(Boolean)
+    : [];
+
+const toProductResponse = (product) => {
+  if (!product) return product;
+  const publishedReviews = Array.isArray(product.reviews)
+    ? product.reviews.filter((review) => review.status === 'PUBLISHED' || !review.status)
+    : [];
+
+  const countValue = product._count?.reviews;
+  const reviewCount =
+    typeof countValue === 'number'
+      ? countValue
+      : Array.isArray(product.reviews)
+      ? product.reviews.length
+      : 0;
+
+  const averageRating =
+    publishedReviews.length > 0
+      ? Number(
+          (
+            publishedReviews.reduce((total, current) => total + current.rating, 0) /
+            publishedReviews.length
+          ).toFixed(2)
+        )
+      : 0;
+
+  return {
+    ...product,
+    collections: mapCollections(product),
+    averageRating,
+    reviewCount,
+  };
+};
+
+const ensureLocation = async (tx, name) => {
+  if (!name) return null;
+  const existing = await tx.location.findFirst({ where: { name } });
+  if (existing) return existing;
+  return tx.location.create({ data: { name } });
+};
+
+const resolveCollectionIds = async (tx, payload) => {
+  const ids = Array.isArray(payload.collections) ? payload.collections : [];
+  const handles = Array.isArray(payload.collectionHandles) ? payload.collectionHandles : [];
+  if (!handles.length) return ids;
+  const found = await tx.collection.findMany({
+    where: { handle: { in: handles } },
+    select: { id: true },
+  });
+  return Array.from(new Set([...ids, ...found.map((item) => item.id)]));
+};
+
+const buildVariantTitle = (variant, optionOrder) => {
+  if (variant.title) return variant.title;
+  if (!variant.optionValues || !optionOrder?.length) return 'Default';
+  const parts = optionOrder
+    .map((opt) => variant.optionValues[opt.name])
+    .filter((value) => value && String(value).trim() !== '');
+  return parts.length ? parts.join(' / ') : 'Default';
+};
+exports.listProducts = async (req, res, next) => {
+  try {
+    const prisma = await getPrisma();
+    const { q, search, category, minPrice, maxPrice, page, limit, handles } = req.query;
+    const searchValue = String(search ?? q ?? '').trim();
+    const categoryValue = String(category ?? '').trim();
+    const handleList = String(handles ?? '')
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean);
+
+    const take = Math.min(Number.parseInt(limit, 10) || 24, 200);
+    const pageNumber = Math.max(Number.parseInt(page, 10) || 1, 1);
+    const skip = (pageNumber - 1) * take;
+
+    const filters = [];
+
+    if (handleList.length) {
+      filters.push({ handle: { in: handleList } });
+    }
+
+    if (searchValue) {
+      filters.push({
+        OR: [
+          { title: { contains: searchValue, mode: 'insensitive' } },
+          { handle: { contains: searchValue, mode: 'insensitive' } },
+          { descriptionHtml: { contains: searchValue, mode: 'insensitive' } },
+          { vendor: { contains: searchValue, mode: 'insensitive' } },
+          { productType: { contains: searchValue, mode: 'insensitive' } },
+        ],
+      });
+    }
+
+    if (categoryValue) {
+      filters.push({
+        OR: [
+          { productType: { contains: categoryValue, mode: 'insensitive' } },
+          { category: { contains: categoryValue, mode: 'insensitive' } },
+          {
+            collections: {
+              some: { collection: { handle: { equals: categoryValue, mode: 'insensitive' } } },
+            },
+          },
+        ],
+      });
+    }
+
+    const priceFilter = {};
+    const minValue = toNumber(minPrice);
+    const maxValue = toNumber(maxPrice);
+    if (minValue !== undefined) priceFilter.gte = minValue;
+    if (maxValue !== undefined) priceFilter.lte = maxValue;
+    if (Object.keys(priceFilter).length) {
+      filters.push({ variants: { some: { price: priceFilter } } });
+    }
+
+    const where = filters.length ? { AND: filters } : undefined;
+
+    const [products, total] = await Promise.all([
+      prisma.product.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        include: productInclude,
+        take,
+        skip,
+      }),
+      prisma.product.count({ where }),
+    ]);
+
+    const mapped = products.map(toProductResponse);
+    return sendSuccess(res, mapped, { total, page: pageNumber, limit: take });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+exports.getProduct = async (req, res, next) => {
+  try {
+    const prisma = await getPrisma();
+    const identifier = req.params.id;
+    let product = await prisma.product.findUnique({
+      where: { id: identifier },
+      include: productInclude,
+    });
+    if (!product) {
+      product = await prisma.product.findUnique({
+        where: { handle: identifier },
+        include: productInclude,
+      });
+    }
+    if (!product) {
+      return sendError(res, 404, 'Product not found');
+    }
+    return sendSuccess(res, toProductResponse(product));
+  } catch (error) {
+    return next(error);
+  }
+};
+
+const createProductRelations = async (tx, productId, payload) => {
+  const collectionIds = await resolveCollectionIds(tx, payload);
+  if (collectionIds.length) {
+    await tx.productCollection.createMany({
+      data: collectionIds.map((collectionId, index) => ({
+        productId,
+        collectionId,
+        position: index + 1,
+      })),
+    });
+  }
+
+  if (payload.media?.length) {
+    await tx.productMedia.createMany({
+      data: payload.media.map((media, index) => ({
+        productId,
+        url: media.url,
+        alt: media.alt ?? null,
+        type: media.type ?? 'IMAGE',
+        position: media.position ?? index,
+      })),
+    });
+  }
+
+  if (payload.options?.length) {
+    await tx.productOption.createMany({
+      data: payload.options.map((option, index) => ({
+        productId,
+        name: option.name,
+        values: option.values,
+        position: index + 1,
+      })),
+    });
+  }
+
+  const mediaRecords = payload.media?.length
+    ? await tx.productMedia.findMany({ where: { productId } })
+    : [];
+  const mediaByUrl = new Map(mediaRecords.map((record) => [record.url, record.id]));
+
+  const optionOrder = payload.options || [];
+
+  if (payload.variants?.length) {
+    for (const [index, variant] of payload.variants.entries()) {
+      const created = await tx.productVariant.create({
+        data: {
+          productId,
+          title: buildVariantTitle(variant, optionOrder),
+          position: index + 1,
+          sku: variant.sku ?? null,
+          barcode: variant.barcode ?? null,
+          price: toDecimalString(variant.price),
+          compareAtPrice: toDecimalString(variant.compareAtPrice),
+          costPerItem: toDecimalString(variant.costPerItem),
+          unitPrice: toDecimalString(variant.unitPrice),
+          unitPriceMeasurement: variant.unitPriceMeasurement,
+          taxable: variant.taxable ?? true,
+          trackInventory: variant.trackInventory ?? true,
+          inventoryPolicy: variant.inventoryPolicy ?? 'DENY',
+          requiresShipping: variant.requiresShipping ?? true,
+          weight: toDecimalString(variant.weight),
+          weightUnit: variant.weightUnit ?? null,
+          originCountryCode: variant.originCountryCode ?? null,
+          hsCode: variant.hsCode ?? null,
+          optionValues: variant.optionValues ?? undefined,
+          imageId: variant.imageUrl ? mediaByUrl.get(variant.imageUrl) : null,
+        },
+      });
+
+      if (variant.inventory?.available !== undefined && variant.trackInventory !== false) {
+        const locationName = variant.inventory.location || 'Default';
+        const location = await ensureLocation(tx, locationName);
+        if (location) {
+          await tx.inventoryLevel.create({
+            data: {
+              variantId: created.id,
+              locationId: location.id,
+              available: variant.inventory.available ?? 0,
+              onHand: variant.inventory.available ?? 0,
+              committed: 0,
+              unavailable: 0,
+            },
+          });
+        }
+      }
+
+      if (variant.metafields?.length) {
+        await tx.variantMetafield.createMany({
+          data: variant.metafields.map((field) => ({
+            variantId: created.id,
+            namespace: field.namespace,
+            key: field.key,
+            type: field.type,
+            value: field.value,
+            description: field.description ?? null,
+          })),
+        });
+      }
+    }
+  }
+
+  if (payload.metafields?.length) {
+    await tx.productMetafield.createMany({
+      data: payload.metafields.map((field) => ({
+        productId,
+        namespace: field.namespace,
+        key: field.key,
+        type: field.type,
+        value: field.value,
+        description: field.description ?? null,
+        set: field.set ?? 'PRODUCT',
+      })),
+    });
+  }
+};
+
+exports.createProduct = async (req, res, next) => {
+  try {
+    const payload = parseProductInput(req.body);
+    const prisma = await getPrisma();
+
+    const product = await prisma.$transaction(async (tx) => {
+      const created = await tx.product.create({
+        data: {
+          title: payload.title,
+          handle: payload.handle,
+          descriptionHtml: payload.descriptionHtml,
+          status: payload.status ?? 'DRAFT',
+          vendor: payload.vendor,
+          productType: payload.productType,
+          category: payload.category,
+          categoryTaxonomyId: payload.categoryTaxonomyId,
+          apparelType: payload.apparelType,
+          templateSuffix: payload.templateSuffix,
+          tags: payload.tags ?? [],
+          subscriptionsEnabled: payload.subscriptionsEnabled ?? false,
+          publishedAt: payload.publishedAt ?? null,
+        },
+      });
+
+      await createProductRelations(tx, created.id, payload);
+
+      return tx.product.findUnique({
+        where: { id: created.id },
+        include: productInclude,
+      });
+    });
+
+    res.status(201);
+    return sendSuccess(res, toProductResponse(product));
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return sendError(res, 400, error.errors[0]?.message || 'Invalid payload');
+    }
+    if (error.code === 'P2002') {
+      return sendError(res, 409, 'Product handle already exists');
+    }
+    return next(error);
+  }
+};
+
+exports.updateProduct = async (req, res, next) => {
+  try {
+    const payload = parseProductInput(req.body, { partial: true });
+    const prisma = await getPrisma();
+
+    const product = await prisma.$transaction(async (tx) => {
+      const updated = await tx.product.update({
+        where: { id: req.params.id },
+        data: {
+          title: payload.title,
+          handle: payload.handle,
+          descriptionHtml: payload.descriptionHtml,
+          status: payload.status,
+          vendor: payload.vendor,
+          productType: payload.productType,
+          category: payload.category,
+          categoryTaxonomyId: payload.categoryTaxonomyId,
+          apparelType: payload.apparelType,
+          templateSuffix: payload.templateSuffix,
+          tags: payload.tags,
+          subscriptionsEnabled: payload.subscriptionsEnabled,
+          publishedAt: payload.publishedAt ?? undefined,
+        },
+      });
+
+      if (payload.collections || payload.collectionHandles) {
+        await tx.productCollection.deleteMany({ where: { productId: updated.id } });
+      }
+      if (payload.media) {
+        await tx.productMedia.deleteMany({ where: { productId: updated.id } });
+      }
+      if (payload.options) {
+        await tx.productOption.deleteMany({ where: { productId: updated.id } });
+      }
+      if (payload.variants) {
+        await tx.inventoryLevel.deleteMany({ where: { variant: { productId: updated.id } } });
+        await tx.productVariant.deleteMany({ where: { productId: updated.id } });
+      }
+      if (payload.metafields) {
+        await tx.productMetafield.deleteMany({ where: { productId: updated.id } });
+      }
+
+      await createProductRelations(tx, updated.id, payload);
+
+      return tx.product.findUnique({
+        where: { id: updated.id },
+        include: productInclude,
+      });
+    });
+
+    return sendSuccess(res, toProductResponse(product));
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return sendError(res, 400, error.errors[0]?.message || 'Invalid payload');
+    }
+    if (error.code === 'P2025') {
+      return sendError(res, 404, 'Product not found');
+    }
+    if (error.code === 'P2002') {
+      return sendError(res, 409, 'Product handle already exists');
+    }
+    return next(error);
+  }
+};
+
+exports.deleteProduct = async (req, res, next) => {
+  try {
+    const prisma = await getPrisma();
+    await prisma.product.delete({ where: { id: req.params.id } });
+    return res.status(204).send();
+  } catch (error) {
+    if (error.code === 'P2025') {
+      return sendError(res, 404, 'Product not found');
+    }
+    return next(error);
+  }
+};
+const parseCsv = (text) => {
+  const rows = [];
+  let current = [];
+  let value = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < text.length; i += 1) {
+    const char = text[i];
+    const next = text[i + 1];
+
+    if (char === '"') {
+      if (inQuotes && next === '"') {
+        value += '"';
+        i += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+
+    if (char === ',' && !inQuotes) {
+      current.push(value);
+      value = '';
+      continue;
+    }
+
+    if ((char === '\n' || char === '\r') && !inQuotes) {
+      if (char === '\r' && next === '\n') {
+        i += 1;
+      }
+      current.push(value);
+      if (current.some((cell) => cell.trim() !== '')) {
+        rows.push(current);
+      }
+      current = [];
+      value = '';
+      continue;
+    }
+
+    value += char;
+  }
+
+  if (value.length || current.length) {
+    current.push(value);
+    if (current.some((cell) => cell.trim() !== '')) {
+      rows.push(current);
+    }
+  }
+
+  return rows;
+};
+
+const parseCsvProducts = (text) => {
+  const rows = parseCsv(text);
+  if (!rows.length) return [];
+  const header = rows[0].map((cell) => cell.trim());
+  const dataRows = rows.slice(1);
+
+  const get = (row, key) => {
+    const index = header.indexOf(key);
+    if (index < 0) return '';
+    return row[index] ?? '';
+  };
+
+  const productsByHandle = new Map();
+
+  dataRows.forEach((row) => {
+    const handle = String(get(row, 'Handle') || '').trim();
+    const title = String(get(row, 'Title') || '').trim();
+    if (!handle && !title) return;
+
+    const productKey = handle || slugify(title) || title;
+    if (!productsByHandle.has(productKey)) {
+      productsByHandle.set(productKey, {
+        handle: handle || slugify(title) || title,
+        title: title || handle,
+        status: String(get(row, 'Status') || 'DRAFT').toUpperCase(),
+        vendor: String(get(row, 'Vendor') || '').trim() || undefined,
+        productType: String(get(row, 'ProductType') || '').trim() || undefined,
+        apparelType: String(get(row, 'ApparelType') || '').trim() || undefined,
+        category: String(get(row, 'Category') || '').trim() || undefined,
+        tags: normalizeTags(get(row, 'Tags')),
+        descriptionHtml: String(get(row, 'DescriptionHtml') || '').trim() || undefined,
+        collectionHandles: String(get(row, 'Collections') || '')
+          .split('|')
+          .flatMap((chunk) => chunk.split(','))
+          .map((value) => value.trim())
+          .filter(Boolean),
+        media: [],
+        options: [],
+        variants: [],
+      });
+    }
+
+    const product = productsByHandle.get(productKey);
+    const imageSrcs = String(get(row, 'Image Srcs') || '').trim();
+    if (imageSrcs) {
+      imageSrcs
+        .split('|')
+        .map((value) => value.trim())
+        .filter(Boolean)
+        .forEach((url) => product.media.push({ url }));
+    }
+
+    const optionNames = [
+      String(get(row, 'Option1 Name') || '').trim(),
+      String(get(row, 'Option2 Name') || '').trim(),
+      String(get(row, 'Option3 Name') || '').trim(),
+    ];
+    const optionValues = [
+      String(get(row, 'Option1 Value') || '').trim(),
+      String(get(row, 'Option2 Value') || '').trim(),
+      String(get(row, 'Option3 Value') || '').trim(),
+    ];
+
+    const optionValueMap = {};
+    optionNames.forEach((name, index) => {
+      if (name && optionValues[index]) {
+        optionValueMap[name] = optionValues[index];
+      }
+    });
+
+    const variant = {
+      sku: String(get(row, 'Variant SKU') || '').trim() || undefined,
+      barcode: String(get(row, 'Variant Barcode') || '').trim() || undefined,
+      price: toNumber(get(row, 'Variant Price')),
+      compareAtPrice: toNumber(get(row, 'Variant CompareAtPrice')),
+      costPerItem: toNumber(get(row, 'Variant Cost')),
+      taxable: toBoolean(get(row, 'Variant Taxable')),
+      trackInventory: toBoolean(get(row, 'Variant TrackInventory')),
+      inventoryPolicy: String(get(row, 'Variant InventoryPolicy') || '').trim() || undefined,
+      requiresShipping: toBoolean(get(row, 'Variant RequiresShipping')),
+      weight: toNumber(get(row, 'Variant Weight')),
+      weightUnit: String(get(row, 'Variant WeightUnit') || '').trim() || undefined,
+      originCountryCode: String(get(row, 'Variant OriginCountry') || '').trim() || undefined,
+      hsCode: String(get(row, 'Variant HSCode') || '').trim() || undefined,
+      imageUrl: String(get(row, 'Variant Image') || '').trim() || undefined,
+      inventory: {
+        available: toNumber(get(row, 'Variant Inventory Available')),
+        location: String(get(row, 'Variant Inventory Location') || '').trim() || undefined,
+      },
+      optionValues: Object.keys(optionValueMap).length ? optionValueMap : undefined,
+    };
+
+    product.variants.push(variant);
+  });
+
+  productsByHandle.forEach((product) => {
+    const optionMap = new Map();
+    product.variants.forEach((variant) => {
+      const values = variant.optionValues || {};
+      Object.entries(values).forEach(([name, value]) => {
+        if (!optionMap.has(name)) {
+          optionMap.set(name, new Set());
+        }
+        if (value) optionMap.get(name).add(value);
+      });
+    });
+    if (optionMap.size) {
+      product.options = Array.from(optionMap.entries()).map(([name, values]) => ({
+        name,
+        values: Array.from(values),
+      }));
+    }
+  });
+
+  return Array.from(productsByHandle.values());
+};
+
+const normalizeBulkItem = (item) => parseProductInput(item);
+
+exports.bulkImportProducts = async (req, res, next) => {
+  const { items } = req.body || {};
+  if (!Array.isArray(items) || !items.length) {
+    return res.status(400).json({ message: 'Provide an array of products under "items".' });
+  }
+
+  const prisma = await getPrisma();
+  const summary = { created: 0, updated: 0, failed: 0, results: [] };
+
+  for (const rawItem of items) {
+    try {
+      const payload = normalizeBulkItem(rawItem);
+      const existing = await prisma.product.findUnique({ where: { handle: payload.handle } });
+
+      if (existing) {
+        await prisma.productCollection.deleteMany({ where: { productId: existing.id } });
+        await prisma.productMedia.deleteMany({ where: { productId: existing.id } });
+        await prisma.productOption.deleteMany({ where: { productId: existing.id } });
+        await prisma.inventoryLevel.deleteMany({ where: { variant: { productId: existing.id } } });
+        await prisma.productVariant.deleteMany({ where: { productId: existing.id } });
+        await prisma.productMetafield.deleteMany({ where: { productId: existing.id } });
+
+        await prisma.$transaction(async (tx) => {
+          await tx.product.update({
+            where: { id: existing.id },
+            data: {
+              title: payload.title,
+              handle: payload.handle,
+              descriptionHtml: payload.descriptionHtml,
+              status: payload.status ?? 'DRAFT',
+              vendor: payload.vendor,
+              productType: payload.productType,
+              category: payload.category,
+              categoryTaxonomyId: payload.categoryTaxonomyId,
+              apparelType: payload.apparelType,
+              templateSuffix: payload.templateSuffix,
+              tags: payload.tags ?? [],
+              subscriptionsEnabled: payload.subscriptionsEnabled ?? false,
+              publishedAt: payload.publishedAt ?? null,
+            },
+          });
+          await createProductRelations(tx, existing.id, payload);
+        });
+
+        summary.updated += 1;
+        summary.results.push({ handle: payload.handle, status: 'updated' });
+      } else {
+        await prisma.$transaction(async (tx) => {
+          const created = await tx.product.create({
+            data: {
+              title: payload.title,
+              handle: payload.handle,
+              descriptionHtml: payload.descriptionHtml,
+              status: payload.status ?? 'DRAFT',
+              vendor: payload.vendor,
+              productType: payload.productType,
+              category: payload.category,
+              categoryTaxonomyId: payload.categoryTaxonomyId,
+              apparelType: payload.apparelType,
+              templateSuffix: payload.templateSuffix,
+              tags: payload.tags ?? [],
+              subscriptionsEnabled: payload.subscriptionsEnabled ?? false,
+              publishedAt: payload.publishedAt ?? null,
+            },
+          });
+          await createProductRelations(tx, created.id, payload);
+        });
+        summary.created += 1;
+        summary.results.push({ handle: payload.handle, status: 'created' });
+      }
+    } catch (error) {
+      summary.failed += 1;
+      summary.results.push({
+        handle: rawItem?.handle ?? rawItem?.title ?? 'unknown',
+        status: 'failed',
+        message: error.message || 'Unable to import product',
+      });
+    }
+  }
+
+  return res.status(200).json(summary);
+};
+
+exports.importProductsCsv = async (req, res, next) => {
+  try {
+    const csvText = req.body?.csv || '';
+    if (!csvText) {
+      return res.status(400).json({ message: 'CSV payload is required.' });
+    }
+    const items = parseCsvProducts(String(csvText));
+    if (!items.length) {
+      return res.status(400).json({ message: 'CSV contained no valid rows.' });
+    }
+    req.body = { items };
+    return exports.bulkImportProducts(req, res, next);
+  } catch (error) {
+    return next(error);
+  }
+};
+
+const escapeCsv = (value) => {
+  if (value === null || value === undefined) return '';
+  const str = String(value);
+  if (/[",\n]/.test(str)) {
+    return `"${str.replace(/"/g, '""')}"`;
+  }
+  return str;
+};
+
+exports.exportProducts = async (_req, res, next) => {
+  try {
+    const prisma = await getPrisma();
+    const products = await prisma.product.findMany({
+      orderBy: { createdAt: 'desc' },
+      include: productInclude,
+    });
+
+    const headers = [
+      'Handle',
+      'Title',
+      'Status',
+      'Vendor',
+      'ProductType',
+      'ApparelType',
+      'Category',
+      'Tags',
+      'DescriptionHtml',
+      'Collections',
+      'Option1 Name',
+      'Option1 Value',
+      'Option2 Name',
+      'Option2 Value',
+      'Option3 Name',
+      'Option3 Value',
+      'Variant SKU',
+      'Variant Barcode',
+      'Variant Price',
+      'Variant CompareAtPrice',
+      'Variant Cost',
+      'Variant Taxable',
+      'Variant TrackInventory',
+      'Variant InventoryPolicy',
+      'Variant RequiresShipping',
+      'Variant Weight',
+      'Variant WeightUnit',
+      'Variant OriginCountry',
+      'Variant HSCode',
+      'Variant Image',
+      'Variant Inventory Available',
+      'Variant Inventory Location',
+      'Image Srcs',
+    ];
+
+    const rows = [];
+
+    products.forEach((product) => {
+      const collections = mapCollections(product);
+      const collectionHandles = collections.map((col) => col.handle).filter(Boolean).join('|');
+      const tags = Array.isArray(product.tags) ? product.tags.join(', ') : '';
+      const images = Array.isArray(product.media)
+        ? product.media.map((media) => media.url).filter(Boolean).join('|')
+        : '';
+
+      const options = Array.isArray(product.options) ? product.options : [];
+      const optionNames = options.map((opt) => opt.name);
+
+      const variants =
+        Array.isArray(product.variants) && product.variants.length
+          ? product.variants
+          : [
+              {
+                title: 'Default',
+                price: null,
+                optionValues: {},
+                inventoryLevels: [],
+              },
+            ];
+
+      variants.forEach((variant) => {
+        const optionValues = variant.optionValues || {};
+        const optionPairs = optionNames.map((name) => optionValues[name] || '');
+        while (optionPairs.length < 3) optionPairs.push('');
+
+        const inventoryLevels = Array.isArray(variant.inventoryLevels) ? variant.inventoryLevels : [];
+        const inventoryAvailable = inventoryLevels.reduce(
+          (sum, level) => sum + (Number(level.available) || 0),
+          0,
+        );
+        const primaryLocation = inventoryLevels[0]?.location?.name || '';
+
+        rows.push([
+          product.handle,
+          product.title,
+          product.status,
+          product.vendor ?? '',
+          product.productType ?? '',
+          product.apparelType ?? '',
+          product.category ?? '',
+          tags,
+          product.descriptionHtml ?? '',
+          collectionHandles,
+          optionNames[0] ?? '',
+          optionPairs[0] ?? '',
+          optionNames[1] ?? '',
+          optionPairs[1] ?? '',
+          optionNames[2] ?? '',
+          optionPairs[2] ?? '',
+          variant.sku ?? '',
+          variant.barcode ?? '',
+          variant.price ?? '',
+          variant.compareAtPrice ?? '',
+          variant.costPerItem ?? '',
+          variant.taxable ?? '',
+          variant.trackInventory ?? '',
+          variant.inventoryPolicy ?? '',
+          variant.requiresShipping ?? '',
+          variant.weight ?? '',
+          variant.weightUnit ?? '',
+          variant.originCountryCode ?? '',
+          variant.hsCode ?? '',
+          variant.image?.url ?? '',
+          inventoryAvailable,
+          primaryLocation,
+          images,
+        ]);
+      });
+    });
+
+    const csv = [headers, ...rows].map((row) => row.map(escapeCsv).join(',')).join('\n');
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename="products-export.csv"');
+    return res.status(200).send(csv);
+  } catch (error) {
+    return next(error);
+  }
+};
