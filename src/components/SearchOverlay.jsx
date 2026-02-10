@@ -282,7 +282,7 @@ const SearchOverlay = ({ open, onClose }) => {
             className="flex w-full items-center justify-between rounded-full border border-neutral-200 px-4 py-3 text-[11px] uppercase tracking-[0.32em] text-neutral-600 transition hover:border-neutral-900 hover:text-neutral-900 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <span>Search for "{query || '...'}"</span>
-            <span aria-hidden>-></span>
+            <span aria-hidden>{'->'}</span>
           </button>
         </div>
       </div>
