@@ -28,7 +28,9 @@ const initialState = {
   collections: [],
 };
 
-export const CatalogProvider = ({ children, productLimit = 120 }) => {
+const DEFAULT_PRODUCT_LIMIT = Number(import.meta.env.VITE_CATALOG_LIMIT) || 36;
+
+export const CatalogProvider = ({ children, productLimit = DEFAULT_PRODUCT_LIMIT }) => {
   const [state, setState] = useState(initialState);
   const [collectionCache, setCollectionCache] = useState({});
 

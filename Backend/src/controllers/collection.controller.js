@@ -75,6 +75,16 @@ const collectionInclude = {
   _count: { select: { products: true } },
 };
 
+const collectionListSelect = {
+  id: true,
+  handle: true,
+  title: true,
+  descriptionHtml: true,
+  imageUrl: true,
+  parentId: true,
+  publishedAt: true,
+};
+
 const resolveParentId = async (prisma, payload) => {
   if (payload.parentId !== undefined) return payload.parentId;
   if (!payload.parentHandle) return undefined;
@@ -90,11 +100,15 @@ exports.listCollections = async (req, res, next) => {
     const prisma = await getPrisma();
     const limit = Number.parseInt(req.query?.limit, 10);
     const take = Number.isFinite(limit) && limit > 0 ? Math.min(limit, 200) : undefined;
+    const includeMode = String(req.query?.include ?? '').toLowerCase();
+    const includeOptions =
+      includeMode === 'full' ? { include: collectionInclude } : { select: collectionListSelect };
     const collections = await prisma.collection.findMany({
       orderBy: { title: 'asc' },
-      include: collectionInclude,
+      ...includeOptions,
       take,
     });
+    res.set('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=600');
     return sendSuccess(res, collections);
   } catch (error) {
     return next(error);
@@ -116,6 +130,7 @@ exports.getCollection = async (req, res, next) => {
     if (!collection) {
       return sendError(res, 404, 'Collection not found');
     }
+    res.set('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=600');
     return sendSuccess(res, collection);
   } catch (error) {
     return next(error);
@@ -132,6 +147,7 @@ exports.getCollectionBySlug = async (req, res, next) => {
     if (!collection) {
       return sendError(res, 404, 'Collection not found');
     }
+    res.set('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=600');
     return sendSuccess(res, collection);
   } catch (error) {
     return next(error);

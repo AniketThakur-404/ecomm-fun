@@ -55,6 +55,10 @@ const unwrap = (payload) => {
   return payload;
 };
 
+const inflightRequests = new Map();
+const responseCache = new Map();
+const RESPONSE_CACHE_TTL = 20000;
+
 const request = async (path, { method = 'GET', headers = {}, body } = {}) => {
   const url = path.startsWith('http') ? path : `${API_URL}${path}`;
   const options = { method, headers: { ...headers } };
@@ -68,8 +72,41 @@ const request = async (path, { method = 'GET', headers = {}, body } = {}) => {
     }
   }
 
-  const response = await fetch(url, options);
-  return parseResponse(response);
+  const methodUpper = String(method || 'GET').toUpperCase();
+  const cacheKey =
+    methodUpper === 'GET' && body === undefined
+      ? `${url}|auth:${options.headers.Authorization || ''}`
+      : null;
+
+  if (cacheKey && !options.headers.Authorization) {
+    const cached = responseCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.payload;
+    }
+    if (cached) responseCache.delete(cacheKey);
+  }
+
+  if (cacheKey && inflightRequests.has(cacheKey)) {
+    return inflightRequests.get(cacheKey);
+  }
+
+  const pending = fetch(url, options)
+    .then(parseResponse)
+    .then((payload) => {
+      if (cacheKey && !options.headers.Authorization) {
+        responseCache.set(cacheKey, {
+          payload: Promise.resolve(payload),
+          expiresAt: Date.now() + RESPONSE_CACHE_TTL,
+        });
+      }
+      return payload;
+    })
+    .finally(() => {
+      if (cacheKey) inflightRequests.delete(cacheKey);
+    });
+
+  if (cacheKey) inflightRequests.set(cacheKey, pending);
+  return pending;
 };
 
 const requestWithAuth = (path, token, options = {}) => {
@@ -218,15 +255,25 @@ const mapProduct = (product) => {
 
   const variants = Array.isArray(product.variants)
     ? product.variants.map((variant) => {
-        const inventoryLevels = Array.isArray(variant.inventoryLevels)
+        const hasInventoryLevels = Object.prototype.hasOwnProperty.call(
+          variant || {},
+          'inventoryLevels',
+        );
+        const inventoryLevels = hasInventoryLevels && Array.isArray(variant.inventoryLevels)
           ? variant.inventoryLevels
           : [];
-        const quantityAvailable = inventoryLevels.reduce(
-          (sum, level) => sum + (Number(level.available) || 0),
-          0,
-        );
+        const quantityAvailable = hasInventoryLevels
+          ? inventoryLevels.reduce(
+              (sum, level) => sum + (Number(level.available) || 0),
+              0,
+            )
+          : null;
         const availableForSale =
-          variant.trackInventory === false ? true : quantityAvailable > 0;
+          variant.trackInventory === false
+            ? true
+            : hasInventoryLevels
+            ? quantityAvailable > 0
+            : true;
 
         const selectedOptions = variant.optionValues
           ? Object.entries(variant.optionValues).map(([name, value]) => ({
@@ -421,10 +468,27 @@ export function toProductCard(product) {
   };
 }
 
-export const fetchAllProducts = async (limit = 100) => {
-  const payload = await request(`/products${buildQuery({ limit })}`);
+export const fetchAllProducts = async (limit = 100, page = 1) => {
+  const payload = await request(`/products${buildQuery({ limit, page })}`);
   const items = unwrap(payload) || [];
   return items.map(mapProduct).filter(Boolean);
+};
+
+export const fetchProductsPage = async ({
+  limit = 40,
+  page = 1,
+  search,
+  category,
+  handles,
+} = {}) => {
+  const payload = await request(
+    `/products${buildQuery({ limit, page, search, category, handles })}`,
+  );
+  const items = unwrap(payload) || [];
+  return {
+    items: items.map(mapProduct).filter(Boolean),
+    meta: payload?.meta ?? null,
+  };
 };
 
 export const fetchCollections = async (limit = 8) => {

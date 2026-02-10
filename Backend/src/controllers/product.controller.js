@@ -378,13 +378,42 @@ const productInclude = {
   },
 };
 
-const productListInclude = {
+const productListSelect = {
+  id: true,
+  handle: true,
+  title: true,
+  status: true,
+  vendor: true,
+  productType: true,
+  category: true,
+  apparelType: true,
+  tags: true,
+  publishedAt: true,
+  createdAt: true,
+  updatedAt: true,
   collections: {
-    include: { collection: true },
+    select: {
+      collection: {
+        select: {
+          id: true,
+          handle: true,
+          title: true,
+        },
+      },
+    },
     orderBy: { position: 'asc' },
   },
-  media: true,
-  options: true,
+  media: {
+    where: { type: 'IMAGE' },
+    select: {
+      url: true,
+      alt: true,
+      type: true,
+      position: true,
+    },
+    orderBy: { position: 'asc' },
+    take: 2,
+  },
   variants: {
     select: {
       id: true,
@@ -532,21 +561,28 @@ exports.listProducts = async (req, res, next) => {
       filters.push({ variants: { some: { price: priceFilter } } });
     }
 
+    const isAdminRoute = String(req.baseUrl || '').includes('/api/admin');
+    if (!isAdminRoute) {
+      filters.push({ status: 'ACTIVE' });
+    }
     const where = filters.length ? { AND: filters } : undefined;
     const includeMode = String(include ?? '').toLowerCase();
-    const includeRelations = includeMode === 'full' ? productInclude : productListInclude;
+    const includeRelations = includeMode === 'full' ? { include: productInclude } : { select: productListSelect };
 
     const [products, total] = await Promise.all([
       prisma.product.findMany({
         where,
         orderBy: { createdAt: 'desc' },
-        include: includeRelations,
+        ...includeRelations,
         take,
         skip,
       }),
       prisma.product.count({ where }),
     ]);
 
+    if (!isAdminRoute) {
+      res.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=300');
+    }
     const mapped = products.map(toProductResponse);
     return sendSuccess(res, mapped, { total, page: pageNumber, limit: take });
   } catch (error) {
@@ -570,6 +606,9 @@ exports.getProduct = async (req, res, next) => {
     }
     if (!product) {
       return sendError(res, 404, 'Product not found');
+    }
+    if (!req.headers?.authorization) {
+      res.set('Cache-Control', 'public, s-maxage=120, stale-while-revalidate=300');
     }
     return sendSuccess(res, toProductResponse(product));
   } catch (error) {

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useOutletContext, useParams } from 'react-router-dom';
 import {
   ChevronLeft,
@@ -25,9 +25,9 @@ import { useAuth } from '../contexts/auth-context';
 import {
   extractOptionValues,
   extractSizeOptions,
+  fetchProductsPage,
   fetchProductByHandle,
   fetchProductsFromCollection,
-  fetchAllProducts,
   findVariantForSize,
   formatMoney,
   getProductImageUrl,
@@ -118,6 +118,8 @@ const ProductDetails = () => {
   const [product, setProduct] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const relatedSignatureRef = useRef(null);
+  const recommendedSignatureRef = useRef(null);
 
   const [images, setImages] = useState([]);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
@@ -564,6 +566,14 @@ const ProductDetails = () => {
       }
       // END FBT RESTRICTION CHANGE
 
+      const signature = [
+        product.handle,
+        product.productType ?? '',
+        Array.isArray(product.tags) ? product.tags.join(',') : '',
+      ].join('|');
+      if (relatedSignatureRef.current === signature) return;
+      relatedSignatureRef.current = signature;
+
       const currentCat = getCategory(product);
 
       // Define limits: "Under like this combo" -> likely means 1 bottom, 1 shoe, 1 other top?
@@ -579,14 +589,22 @@ const ProductDetails = () => {
       let related = [];
 
       try {
-        // Fetch more products for better random pool
-        const allProducts = await fetchAllProducts(60);
+        let pool = [];
+        if (product.productType) {
+          const typeRecs = await searchProducts(product.productType, 24);
+          pool = typeRecs;
+        }
+
+        if (pool.length < 12) {
+          const { items } = await fetchProductsPage({ limit: 36, page: 1 });
+          pool = [...pool, ...items];
+        }
 
         // Helper to shuffle array
         const shuffle = (array) => array.sort(() => 0.5 - Math.random());
 
         // Candidates: Exclude current, exclude combos (from being recommended), ensure available
-        const candidates = allProducts.filter((item) =>
+        const candidates = pool.filter((item) =>
           item?.handle &&
           item.handle !== product.handle &&
           !isComboProduct(item)
@@ -683,77 +701,32 @@ const ProductDetails = () => {
       if (!product) return;
 
       try {
+        const signature = [
+          product.handle,
+          product.collections?.[0]?.handle ?? '',
+          product.productType ?? '',
+        ].join('|');
+        if (recommendedSignatureRef.current === signature) return;
+        recommendedSignatureRef.current = signature;
+
         let recs = [];
         // 1. Try Primary Collection
         const primaryCollection = product.collections?.[0]?.handle;
         if (primaryCollection) {
-          const items = await fetchProductsFromCollection(primaryCollection, 10);
+          const items = await fetchProductsFromCollection(primaryCollection, 8);
           recs = items;
         }
 
         // 2. Fallback to Search by Type if no collection or few results
         if ((!recs || recs.length < 4) && product.productType) {
-          const typeRecs = await searchProducts(product.productType, 10);
+          const typeRecs = await searchProducts(product.productType, 8);
           recs = [...recs, ...typeRecs];
         }
 
-        // 3. Fallback to generic "Latest" if still nothing (using fetchAllProducts)
+        // 3. Fallback to generic "Latest" if still nothing (paged list)
         if (!recs || recs.length < 4) {
-          const all = await fetchAllProducts(12);
-          recs = [...recs, ...all];
-        }
-
-        if (cancelled) return;
-
-        // Filter out current product and duplicates
-        const unique = [];
-        const seen = new Set();
-        seen.add(product.handle); // Exclude current
-
-        recs.forEach(item => {
-          if (item?.handle && !seen.has(item.handle)) {
-            unique.push(item);
-            seen.add(item.handle);
-          }
-        });
-
-        // Limit to 4 for desktop, 4 for mobile (or 8?)
-        // Let's show 4-8.
-        setRecommendedProducts(unique.slice(0, 8).map(toProductCard));
-
-      } catch (e) {
-        console.warn('Failed to load recommended products', e);
-      }
-    }
-    loadRecommended();
-    return () => { cancelled = true; };
-  }, [product]);
-
-  // Fetch "You Might Also Like" products (Same Collection or Category)
-  useEffect(() => {
-    let cancelled = false;
-    async function loadRecommended() {
-      if (!product) return;
-
-      try {
-        let recs = [];
-        // 1. Try Primary Collection
-        const primaryCollection = product.collections?.[0]?.handle;
-        if (primaryCollection) {
-          const items = await fetchProductsFromCollection(primaryCollection, 10);
-          recs = items;
-        }
-
-        // 2. Fallback to Search by Type if no collection or few results
-        if ((!recs || recs.length < 4) && product.productType) {
-          const typeRecs = await searchProducts(product.productType, 10);
-          recs = [...recs, ...typeRecs];
-        }
-
-        // 3. Fallback to generic "Latest" if still nothing (using fetchAllProducts)
-        if (!recs || recs.length < 4) {
-          const all = await fetchAllProducts(12);
-          recs = [...recs, ...all];
+          const { items } = await fetchProductsPage({ limit: 12, page: 1 });
+          recs = [...recs, ...items];
         }
 
         if (cancelled) return;

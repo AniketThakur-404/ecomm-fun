@@ -39,6 +39,7 @@ model Collection {
   children        Collection[]         @relation("CollectionHierarchy")
 
   @@index([title])
+  @@index([handle])
   @@index([parentId])
 }
 
@@ -70,6 +71,11 @@ model Product {
 
   @@index([title])
   @@index([status])
+  @@index([productType])
+  @@index([category])
+  @@index([vendor])
+  @@index([createdAt])
+  @@index([publishedAt])
 }
 
 model ProductCollection {
@@ -147,6 +153,7 @@ model ProductVariant {
 
   @@index([productId])
   @@index([sku])
+  @@index([price])
 }
 
 model Location {

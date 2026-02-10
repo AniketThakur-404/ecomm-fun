@@ -1,6 +1,7 @@
 require('dotenv').config({ override: true });
 const express = require('express');
 const cors = require('cors');
+const compression = require('compression');
 const path = require('node:path');
 
 const { env } = require('./src/config');
@@ -15,21 +16,62 @@ const orderRoutes = require('./src/routes/order.routes');
 
 const app = express();
 
+const normalizeOrigin = (value) =>
+  typeof value === 'string' ? value.trim().replace(/\/+$/, '') : '';
+
+const parseOrigins = (value) =>
+  String(value || '')
+    .split(/[,\s]+/)
+    .map((entry) => normalizeOrigin(entry))
+    .filter(Boolean);
+
+const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const extraOrigins = parseOrigins(process.env.FRONTEND_URLS);
 const allowedOrigins = [
   env.frontendUrl,
+  ...extraOrigins,
   'http://localhost:5173',
   'http://127.0.0.1:5173',
-].filter(Boolean);
+]
+  .map((origin) => normalizeOrigin(origin))
+  .filter(Boolean);
+const allowedOriginSet = new Set(allowedOrigins);
+
+const allowVercelPreview = ['1', 'true', 'yes'].includes(
+  String(process.env.ALLOW_VERCEL_PREVIEW || '').toLowerCase(),
+);
+const vercelProjectName =
+  process.env.FRONTEND_VERCEL_PROJECT_NAME || process.env.VERCEL_PROJECT_NAME;
+const vercelOriginRegex =
+  allowVercelPreview && vercelProjectName
+    ? new RegExp(
+        `^https://${escapeRegex(
+          vercelProjectName,
+        )}(?:-[a-z0-9-]+)?\\.vercel\\.app$`,
+        'i',
+      )
+    : null;
 
 const isLocalDevOrigin = (origin = '') => {
   if (typeof origin !== 'string') return false;
   return origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:');
 };
 
+const isVercelPreviewOrigin = (origin = '') => {
+  if (!vercelOriginRegex) return false;
+  return vercelOriginRegex.test(origin);
+};
+
 const corsOptions = {
   origin(origin, callback) {
     if (!origin) return callback(null, true);
-    if (allowedOrigins.includes(origin) || isLocalDevOrigin(origin)) {
+    const normalized = normalizeOrigin(origin);
+    if (
+      allowedOriginSet.has(normalized) ||
+      isLocalDevOrigin(normalized) ||
+      isVercelPreviewOrigin(normalized)
+    ) {
       return callback(null, true);
     }
     return callback(new Error(`CORS: Origin not allowed: ${origin}`), false);
@@ -40,6 +82,7 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
+app.use(compression());
 app.use(express.json({ limit: '1mb' }));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 

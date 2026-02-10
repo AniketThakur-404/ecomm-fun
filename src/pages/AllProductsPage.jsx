@@ -5,7 +5,7 @@ import { useSearchParams } from 'react-router-dom';
 import { ChevronDown } from 'lucide-react';
 import ProductCard from '../components/ProductCard';
 import { useCatalog } from '../contexts/catalog-context';
-import { normaliseTokenValue, toProductCard } from '../lib/api';
+import { fetchProductsPage, normaliseTokenValue, toProductCard } from '../lib/api';
 
 const normalizeForMatch = (value) => {
   const normalized = normaliseTokenValue(value);
@@ -90,6 +90,26 @@ const SKINTONE_GROUPS = [
   { id: 'dark', label: 'Dark Skin', tokens: ['dark skin', 'dark'] },
 ];
 
+const PAGE_SIZE = 40;
+
+const mergeUniqueProducts = (existing, incoming) => {
+  const seen = new Set();
+  const merged = [];
+
+  [...existing, ...incoming].forEach((item) => {
+    const key = item?.handle || item?.id;
+    if (!key) {
+      merged.push(item);
+      return;
+    }
+    if (seen.has(key)) return;
+    seen.add(key);
+    merged.push(item);
+  });
+
+  return merged;
+};
+
 const sortProducts = (items, sortBy) => {
   const sorted = [...items];
   if (sortBy === 'price_low') {
@@ -128,60 +148,100 @@ const AllProductsPage = ({ initialCategory = 'all' }) => {
     : (skintoneFromCategory ? skintoneFromCategory.tokens : []);
   const occasionTokens = buildOccasionTokens(occasionFilter);
 
+  const isAllMode = activeCategory === 'all' || isSkintoneCategory;
   const { products: catalogProducts, ensureCollectionProducts } = useCatalog();
-  const [products, setProducts] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [collectionProducts, setCollectionProducts] = useState([]);
+  const [collectionLoading, setCollectionLoading] = useState(false);
+  const [pagedProducts, setPagedProducts] = useState([]);
+  const [pagedLoading, setPagedLoading] = useState(false);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [catalogTotal, setCatalogTotal] = useState(null);
   const [sortBy, setSortBy] = useState('recommended');
 
-  // Load products based on category (collection handle)
   useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
+    if (!isAllMode) return;
+    setPagedProducts([]);
+    setPage(1);
+    setHasMore(true);
+    setCatalogTotal(null);
+  }, [activeCategory, isAllMode]);
 
-    async function loadProducts() {
-      if (activeCategory === 'all' || isSkintoneCategory) {
-        // If 'all' or skintone category, use the default catalog products (tag filtering)
-        if (catalogProducts?.length) {
-          if (!cancelled) {
-            setProducts(catalogProducts);
-            setLoading(false);
+  useEffect(() => {
+    if (!isAllMode) return;
+    let cancelled = false;
+
+    async function loadPage() {
+      setPagedLoading(true);
+      try {
+        const { items, meta } = await fetchProductsPage({
+          limit: PAGE_SIZE,
+          page,
+        });
+        if (cancelled) return;
+        setPagedProducts((prev) => {
+          const merged = mergeUniqueProducts(prev, items);
+          if (meta?.total != null) {
+            setCatalogTotal(meta.total);
+            setHasMore(merged.length < meta.total);
+          } else {
+            setHasMore(items.length === PAGE_SIZE);
           }
-        } else {
-          // Wait for catalog to load or fetch all
-          // Assuming useCatalog loads initial products
-          if (!cancelled) setLoading(false);
+          return merged;
+        });
+      } catch (error) {
+        console.error('Failed to load products', error);
+        if (!cancelled) {
+          setHasMore(false);
         }
-      } else {
-        // Fetch specific collection
-        try {
-          const collectionProducts = await ensureCollectionProducts(activeCategory);
-          if (!cancelled) {
-            setProducts(collectionProducts);
-          }
-        } catch (e) {
-          console.error(`Failed to load collection: ${activeCategory}`, e);
-          // Fallback to empty or all products if needed
-          if (!cancelled) setProducts([]);
-        } finally {
-          if (!cancelled) setLoading(false);
+      } finally {
+        if (!cancelled) {
+          setPagedLoading(false);
         }
       }
     }
 
-    loadProducts();
+    loadPage();
 
-    return () => { cancelled = true; };
-  }, [activeCategory, catalogProducts, ensureCollectionProducts, isSkintoneCategory]);
+    return () => {
+      cancelled = true;
+    };
+  }, [isAllMode, page]);
 
-  // Update products when catalogProducts changes if we are in 'all' mode
+  // Load products based on category (collection handle)
   useEffect(() => {
-    if ((activeCategory === 'all' || isSkintoneCategory) && catalogProducts?.length) {
-      setProducts(catalogProducts);
-      setLoading(false);
+    if (isAllMode) return;
+    let cancelled = false;
+    setCollectionLoading(true);
+
+    async function loadCollection() {
+      try {
+        const collectionProducts = await ensureCollectionProducts(activeCategory);
+        if (!cancelled) {
+          setCollectionProducts(collectionProducts);
+        }
+      } catch (e) {
+        console.error(`Failed to load collection: ${activeCategory}`, e);
+        if (!cancelled) setCollectionProducts([]);
+      } finally {
+        if (!cancelled) setCollectionLoading(false);
+      }
     }
-  }, [catalogProducts, activeCategory, isSkintoneCategory]);
 
+    loadCollection();
 
+    return () => {
+      cancelled = true;
+    };
+  }, [activeCategory, ensureCollectionProducts, isAllMode]);
+
+  useEffect(() => {
+    if (!isAllMode || !catalogProducts?.length || pagedProducts.length) return;
+    setPagedProducts((prev) => mergeUniqueProducts(prev, catalogProducts));
+  }, [catalogProducts, isAllMode, pagedProducts.length]);
+
+  const products = isAllMode ? pagedProducts : collectionProducts;
+  const loading = isAllMode ? pagedLoading && pagedProducts.length === 0 : collectionLoading;
   const filteredProducts = useMemo(() => {
     const applySkintone = (hasExplicitSkintone || isSkintoneCategory) && skintoneTokens.length > 0;
     const applyOccasion = occasionTokens.length > 0;
@@ -219,7 +279,12 @@ const AllProductsPage = ({ initialCategory = 'all' }) => {
     }).filter((group) => group.products.length > 0);
   }, [filteredProducts, shouldGroupBySkintone, sortBy]);
 
-  const totalItems = filteredProducts.length;
+  const hasActiveFilters =
+    Boolean(occasionTokens.length) ||
+    hasExplicitSkintone ||
+    isSkintoneCategory ||
+    activeCategory !== 'all';
+  const totalItems = hasActiveFilters ? filteredProducts.length : catalogTotal ?? filteredProducts.length;
   const displaySkintone = skintoneFilter
     ? formatLabel(rawSkintone || skintoneFilter)
     : (skintoneFromCategory?.label || '');
@@ -356,6 +421,23 @@ const AllProductsPage = ({ initialCategory = 'all' }) => {
             )}
           </div>
         )}
+
+        {isAllMode && sortedProducts.length > 0 ? (
+          <div className="flex justify-center pt-10">
+            {hasMore ? (
+              <button
+                type="button"
+                onClick={() => setPage((prev) => prev + 1)}
+                disabled={pagedLoading}
+                className="rounded-full border border-gray-300 px-6 py-2 text-sm font-semibold text-gray-700 transition hover:border-gray-900 hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {pagedLoading ? 'Loading...' : 'Load more'}
+              </button>
+            ) : (
+              <span className="text-sm text-gray-500">You have reached the end.</span>
+            )}
+          </div>
+        ) : null}
       </div>
     </div>
   );
