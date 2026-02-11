@@ -429,6 +429,55 @@ const productListSelect = {
   },
 };
 
+const productCompactSelect = {
+  id: true,
+  handle: true,
+  title: true,
+  status: true,
+  vendor: true,
+  productType: true,
+  category: true,
+  apparelType: true,
+  tags: true,
+  publishedAt: true,
+  createdAt: true,
+  updatedAt: true,
+  collections: {
+    select: {
+      collection: {
+        select: {
+          id: true,
+          handle: true,
+          title: true,
+        },
+      },
+    },
+    orderBy: { position: 'asc' },
+  },
+  media: {
+    where: { type: 'IMAGE' },
+    select: {
+      url: true,
+      alt: true,
+      type: true,
+      position: true,
+    },
+    orderBy: { position: 'asc' },
+    take: 2,
+  },
+  variants: {
+    where: { price: { not: null } },
+    select: {
+      id: true,
+      price: true,
+      compareAtPrice: true,
+      trackInventory: true,
+    },
+    orderBy: { price: 'asc' },
+    take: 1,
+  },
+};
+
 const toDecimalString = (value) =>
   value !== undefined && value !== null ? value.toString() : null;
 
@@ -567,7 +616,12 @@ exports.listProducts = async (req, res, next) => {
     }
     const where = filters.length ? { AND: filters } : undefined;
     const includeMode = String(include ?? '').toLowerCase();
-    const includeRelations = includeMode === 'full' ? { include: productInclude } : { select: productListSelect };
+    const includeRelations =
+      includeMode === 'full'
+        ? { include: productInclude }
+        : includeMode === 'compact'
+        ? { select: productCompactSelect }
+        : { select: productListSelect };
 
     const [products, total] = await Promise.all([
       prisma.product.findMany({

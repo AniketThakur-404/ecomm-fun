@@ -85,6 +85,23 @@ const collectionListSelect = {
   publishedAt: true,
 };
 
+const collectionDetailSelect = {
+  id: true,
+  handle: true,
+  title: true,
+  descriptionHtml: true,
+  imageUrl: true,
+  type: true,
+  rules: true,
+  templateSuffix: true,
+  publishedAt: true,
+  parentId: true,
+  createdAt: true,
+  updatedAt: true,
+};
+
+const collectionCompactSelect = collectionListSelect;
+
 const resolveParentId = async (prisma, payload) => {
   if (payload.parentId !== undefined) return payload.parentId;
   if (!payload.parentHandle) return undefined;
@@ -118,14 +135,23 @@ exports.listCollections = async (req, res, next) => {
 exports.getCollection = async (req, res, next) => {
   try {
     const prisma = await getPrisma();
+    const includeMode = String(req.query?.include ?? '').toLowerCase();
+    const includeOptions =
+      includeMode === 'compact'
+        ? { select: collectionCompactSelect }
+        : includeMode === 'detail'
+        ? { select: collectionDetailSelect }
+        : {
+            include: {
+              ...collectionInclude,
+              products: {
+                include: { product: { select: { id: true, title: true, handle: true } } },
+              },
+            },
+          };
     const collection = await prisma.collection.findUnique({
       where: { id: req.params.id },
-      include: {
-        ...collectionInclude,
-        products: {
-          include: { product: { select: { id: true, title: true, handle: true } } },
-        },
-      },
+      ...includeOptions,
     });
     if (!collection) {
       return sendError(res, 404, 'Collection not found');
@@ -140,9 +166,16 @@ exports.getCollection = async (req, res, next) => {
 exports.getCollectionBySlug = async (req, res, next) => {
   try {
     const prisma = await getPrisma();
+    const includeMode = String(req.query?.include ?? '').toLowerCase();
+    const includeOptions =
+      includeMode === 'compact'
+        ? { select: collectionCompactSelect }
+        : includeMode === 'detail'
+        ? { select: collectionDetailSelect }
+        : { include: collectionInclude };
     const collection = await prisma.collection.findUnique({
       where: { handle: req.params.slug },
-      include: collectionInclude,
+      ...includeOptions,
     });
     if (!collection) {
       return sendError(res, 404, 'Collection not found');

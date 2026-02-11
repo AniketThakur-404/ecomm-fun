@@ -469,7 +469,7 @@ export function toProductCard(product) {
 }
 
 export const fetchAllProducts = async (limit = 100, page = 1) => {
-  const payload = await request(`/products${buildQuery({ limit, page })}`);
+  const payload = await request(`/products${buildQuery({ limit, page, include: 'compact' })}`);
   const items = unwrap(payload) || [];
   return items.map(mapProduct).filter(Boolean);
 };
@@ -482,7 +482,7 @@ export const fetchProductsPage = async ({
   handles,
 } = {}) => {
   const payload = await request(
-    `/products${buildQuery({ limit, page, search, category, handles })}`,
+    `/products${buildQuery({ limit, page, search, category, handles, include: 'compact' })}`,
   );
   const items = unwrap(payload) || [];
   return {
@@ -499,7 +499,9 @@ export const fetchCollections = async (limit = 8) => {
 
 export const fetchCollectionByHandle = async (handle, limit = 24) => {
   if (!handle) return null;
-  const payload = await request(`/collections/slug/${encodeURIComponent(handle)}`);
+  const payload = await request(
+    `/collections/slug/${encodeURIComponent(handle)}${buildQuery({ include: 'compact' })}`,
+  );
   const collection = normalizeCollection(unwrap(payload));
   const products = await fetchProductsFromCollection(handle, limit);
   return {
@@ -511,7 +513,7 @@ export const fetchCollectionByHandle = async (handle, limit = 24) => {
 export const fetchProductsFromCollection = async (handle, limit = 12) => {
   if (!handle) return [];
   const payload = await request(
-    `/products${buildQuery({ category: handle, limit })}`,
+    `/products${buildQuery({ category: handle, limit, include: 'compact' })}`,
   );
   const items = unwrap(payload) || [];
   return items.map(mapProduct).filter(Boolean);
@@ -520,7 +522,7 @@ export const fetchProductsFromCollection = async (handle, limit = 12) => {
 export const searchProducts = async (query, limit = 20) => {
   if (!query) return [];
   const payload = await request(
-    `/products${buildQuery({ search: query, limit })}`,
+    `/products${buildQuery({ search: query, limit, include: 'compact' })}`,
   );
   const items = unwrap(payload) || [];
   return items.map(mapProduct).filter(Boolean);
@@ -529,7 +531,11 @@ export const searchProducts = async (query, limit = 20) => {
 const fetchProductsByHandles = async (handles) => {
   if (!handles?.length) return [];
   const payload = await request(
-    `/products${buildQuery({ handles: handles.join(','), limit: handles.length })}`,
+    `/products${buildQuery({
+      handles: handles.join(','),
+      limit: handles.length,
+      include: 'compact',
+    })}`,
   );
   const items = unwrap(payload) || [];
   return items.map(mapProduct).filter(Boolean);
@@ -600,8 +606,9 @@ export const adminLogin = async ({ email, password }) => {
 };
 
 export const adminFetchProducts = async (token, params = {}) => {
+  const finalParams = { include: 'compact', ...params };
   const payload = await requestWithAuth(
-    `/admin/products${buildQuery(params)}`,
+    `/admin/products${buildQuery(finalParams)}`,
     token,
   );
   return payload;
@@ -643,7 +650,12 @@ export const adminFetchCollections = async (token, params = {}) =>
   unwrap(await requestWithAuth(`/collections${buildQuery(params)}`, token));
 
 export const adminFetchCollection = async (token, id) =>
-  unwrap(await requestWithAuth(`/collections/${encodeURIComponent(id)}`, token));
+  unwrap(
+    await requestWithAuth(
+      `/collections/${encodeURIComponent(id)}${buildQuery({ include: 'detail' })}`,
+      token,
+    ),
+  );
 
 export const adminCreateCollection = async (token, data) =>
   unwrap(
