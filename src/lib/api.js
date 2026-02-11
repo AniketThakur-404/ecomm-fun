@@ -1,4 +1,10 @@
-const API_BASE = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000').replace(/\/+$/, '');
+const resolveApiBase = () => {
+  if (import.meta.env.VITE_API_BASE_URL) return import.meta.env.VITE_API_BASE_URL;
+  if (import.meta.env.PROD && typeof window !== 'undefined') return window.location.origin;
+  return 'http://localhost:5000';
+};
+
+const API_BASE = resolveApiBase().replace(/\/+$/, '');
 const API_URL = `${API_BASE}/api`;
 
 const DEFAULT_LOCALE = import.meta.env.VITE_LOCALE || 'en-IN';

@@ -28,11 +28,13 @@ const parseOrigins = (value) =>
 const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 const extraOrigins = parseOrigins(process.env.FRONTEND_URLS);
+const vercelUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : '';
 const allowedOrigins = [
   env.frontendUrl,
   ...extraOrigins,
   'http://localhost:5173',
   'http://127.0.0.1:5173',
+  vercelUrl,
 ]
   .map((origin) => normalizeOrigin(origin))
   .filter(Boolean);
