@@ -61,6 +61,49 @@ const unwrap = (payload) => {
   return payload;
 };
 
+const detectPayloadKind = (value) => {
+  if (Array.isArray(value)) return 'array';
+  if (value === null) return 'null';
+  if (typeof value === 'string') {
+    const snippet = value.trim().slice(0, 64).toLowerCase();
+    if (snippet.startsWith('<!doctype') || snippet.startsWith('<html')) {
+      return 'html';
+    }
+    return 'text';
+  }
+  return typeof value;
+};
+
+const extractArray = (value) => {
+  if (Array.isArray(value)) return value;
+  if (!value || typeof value !== 'object') return null;
+  if (Array.isArray(value.items)) return value.items;
+  if (Array.isArray(value.products)) return value.products;
+  if (Array.isArray(value.collections)) return value.collections;
+  if (Array.isArray(value.results)) return value.results;
+  return null;
+};
+
+const extractList = (payload, label) => {
+  const unwrapped = unwrap(payload);
+  const primary = extractArray(unwrapped);
+  if (primary) return primary;
+
+  const fallback = extractArray(payload);
+  if (fallback) return fallback;
+
+  if (unwrapped === null || unwrapped === undefined) return [];
+
+  const kind = detectPayloadKind(unwrapped);
+  if (kind === 'html') {
+    throw new Error(
+      `Unexpected HTML while loading ${label}. Check your Vercel API routing for /api/*.`,
+    );
+  }
+
+  throw new Error(`Unexpected response format while loading ${label}.`);
+};
+
 const inflightRequests = new Map();
 const responseCache = new Map();
 const RESPONSE_CACHE_TTL = 20000;
@@ -476,7 +519,7 @@ export function toProductCard(product) {
 
 export const fetchAllProducts = async (limit = 100, page = 1) => {
   const payload = await request(`/products${buildQuery({ limit, page, include: 'compact' })}`);
-  const items = unwrap(payload) || [];
+  const items = extractList(payload, 'products');
   return items.map(mapProduct).filter(Boolean);
 };
 
@@ -490,16 +533,22 @@ export const fetchProductsPage = async ({
   const payload = await request(
     `/products${buildQuery({ limit, page, search, category, handles, include: 'compact' })}`,
   );
-  const items = unwrap(payload) || [];
+  const items = extractList(payload, 'products');
+  const unwrapped = unwrap(payload);
+  const meta =
+    payload?.meta ??
+    payload?.data?.meta ??
+    (unwrapped && typeof unwrapped === 'object' ? unwrapped.meta : null) ??
+    null;
   return {
     items: items.map(mapProduct).filter(Boolean),
-    meta: payload?.meta ?? null,
+    meta,
   };
 };
 
 export const fetchCollections = async (limit = 8) => {
   const payload = await request(`/collections${buildQuery({ limit })}`);
-  const items = unwrap(payload) || [];
+  const items = extractList(payload, 'collections');
   return items.map(normalizeCollection).filter(Boolean);
 };
 
@@ -521,7 +570,7 @@ export const fetchProductsFromCollection = async (handle, limit = 12) => {
   const payload = await request(
     `/products${buildQuery({ category: handle, limit, include: 'compact' })}`,
   );
-  const items = unwrap(payload) || [];
+  const items = extractList(payload, `products for collection "${handle}"`);
   return items.map(mapProduct).filter(Boolean);
 };
 
@@ -530,7 +579,7 @@ export const searchProducts = async (query, limit = 20) => {
   const payload = await request(
     `/products${buildQuery({ search: query, limit, include: 'compact' })}`,
   );
-  const items = unwrap(payload) || [];
+  const items = extractList(payload, 'search results');
   return items.map(mapProduct).filter(Boolean);
 };
 
@@ -543,7 +592,7 @@ const fetchProductsByHandles = async (handles) => {
       include: 'compact',
     })}`,
   );
-  const items = unwrap(payload) || [];
+  const items = extractList(payload, 'products by handle');
   return items.map(mapProduct).filter(Boolean);
 };
 
