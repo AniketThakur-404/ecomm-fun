@@ -149,8 +149,8 @@ const normalizeOptions = (options) => {
       const values = Array.isArray(option.values)
         ? option.values.map((value) => String(value).trim()).filter(Boolean)
         : typeof option.values === 'string'
-        ? option.values.split(',').map((value) => value.trim()).filter(Boolean)
-        : [];
+          ? option.values.split(',').map((value) => value.trim()).filter(Boolean)
+          : [];
       if (!name || values.length === 0) return null;
       return { name, values };
     })
@@ -210,22 +210,22 @@ const normalizeVariants = (variants) => {
         imageUrl: variant.imageUrl ?? variant.image ?? undefined,
         inventory: variant.inventory
           ? {
-              location: variant.inventory.location
-                ? String(variant.inventory.location)
-                : undefined,
-              available: toNumber(variant.inventory.available),
-            }
+            location: variant.inventory.location
+              ? String(variant.inventory.location)
+              : undefined,
+            available: toNumber(variant.inventory.available),
+          }
           : undefined,
         metafields: Array.isArray(variant.metafields)
           ? variant.metafields
-              .map((field) => ({
-                namespace: String(field?.namespace || ''),
-                key: String(field?.key || ''),
-                type: String(field?.type || ''),
-                value: field?.value,
-                description: field?.description,
-              }))
-              .filter((field) => field.namespace && field.key && field.type)
+            .map((field) => ({
+              namespace: String(field?.namespace || ''),
+              key: String(field?.key || ''),
+              type: String(field?.type || ''),
+              value: field?.value,
+              description: field?.description,
+            }))
+            .filter((field) => field.namespace && field.key && field.type)
           : undefined,
       };
     })
@@ -497,17 +497,17 @@ const toProductResponse = (product) => {
     typeof countValue === 'number'
       ? countValue
       : Array.isArray(product.reviews)
-      ? product.reviews.length
-      : 0;
+        ? product.reviews.length
+        : 0;
 
   const averageRating =
     publishedReviews.length > 0
       ? Number(
-          (
-            publishedReviews.reduce((total, current) => total + current.rating, 0) /
-            publishedReviews.length
-          ).toFixed(2)
-        )
+        (
+          publishedReviews.reduce((total, current) => total + current.rating, 0) /
+          publishedReviews.length
+        ).toFixed(2)
+      )
       : 0;
 
   return {
@@ -620,19 +620,35 @@ exports.listProducts = async (req, res, next) => {
       includeMode === 'full'
         ? { include: productInclude }
         : includeMode === 'compact'
-        ? { select: productCompactSelect }
-        : { select: productListSelect };
+          ? { select: productCompactSelect }
+          : { select: productListSelect };
 
-    const [products, total] = await Promise.all([
-      prisma.product.findMany({
+    const skipCount = String(req.query?.skipCount ?? '').toLowerCase() === 'true';
+
+    let total;
+    let products;
+
+    if (skipCount) {
+      products = await prisma.product.findMany({
         where,
         orderBy: { createdAt: 'desc' },
         ...includeRelations,
         take,
         skip,
-      }),
-      prisma.product.count({ where }),
-    ]);
+      });
+      total = -1; // Indicates count was skipped
+    } else {
+      [products, total] = await Promise.all([
+        prisma.product.findMany({
+          where,
+          orderBy: { createdAt: 'desc' },
+          ...includeRelations,
+          take,
+          skip,
+        }),
+        prisma.product.count({ where }),
+      ]);
+    }
 
     if (!isAdminRoute) {
       res.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=300');
@@ -1258,13 +1274,13 @@ exports.exportProducts = async (_req, res, next) => {
         Array.isArray(product.variants) && product.variants.length
           ? product.variants
           : [
-              {
-                title: 'Default',
-                price: null,
-                optionValues: {},
-                inventoryLevels: [],
-              },
-            ];
+            {
+              title: 'Default',
+              price: null,
+              optionValues: {},
+              inventoryLevels: [],
+            },
+          ];
 
       variants.forEach((variant) => {
         const optionValues = variant.optionValues || {};

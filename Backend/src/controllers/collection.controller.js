@@ -115,18 +115,27 @@ const resolveParentId = async (prisma, payload) => {
 exports.listCollections = async (req, res, next) => {
   try {
     const prisma = await getPrisma();
+    const page = Math.max(Number.parseInt(req.query?.page, 10) || 1, 1);
     const limit = Number.parseInt(req.query?.limit, 10);
-    const take = Number.isFinite(limit) && limit > 0 ? Math.min(limit, 200) : undefined;
+    const take = Number.isFinite(limit) && limit > 0 ? Math.min(limit, 200) : 24;
+    const skip = (page - 1) * take;
+
     const includeMode = String(req.query?.include ?? '').toLowerCase();
     const includeOptions =
       includeMode === 'full' ? { include: collectionInclude } : { select: collectionListSelect };
-    const collections = await prisma.collection.findMany({
-      orderBy: { title: 'asc' },
-      ...includeOptions,
-      take,
-    });
+
+    const [collections, total] = await Promise.all([
+      prisma.collection.findMany({
+        orderBy: { title: 'asc' },
+        ...includeOptions,
+        take,
+        skip,
+      }),
+      prisma.collection.count(),
+    ]);
+
     res.set('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=600');
-    return sendSuccess(res, collections);
+    return sendSuccess(res, collections, { total, page, limit: take });
   } catch (error) {
     return next(error);
   }
@@ -140,8 +149,8 @@ exports.getCollection = async (req, res, next) => {
       includeMode === 'compact'
         ? { select: collectionCompactSelect }
         : includeMode === 'detail'
-        ? { select: collectionDetailSelect }
-        : {
+          ? { select: collectionDetailSelect }
+          : {
             include: {
               ...collectionInclude,
               products: {
@@ -171,8 +180,8 @@ exports.getCollectionBySlug = async (req, res, next) => {
       includeMode === 'compact'
         ? { select: collectionCompactSelect }
         : includeMode === 'detail'
-        ? { select: collectionDetailSelect }
-        : { include: collectionInclude };
+          ? { select: collectionDetailSelect }
+          : { include: collectionInclude };
     const collection = await prisma.collection.findUnique({
       where: { handle: req.params.slug },
       ...includeOptions,

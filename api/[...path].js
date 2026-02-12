@@ -1,9 +1,40 @@
-import app from '../Backend/index.js';
+import { createRequire } from 'node:module';
+
+const require = createRequire(import.meta.url);
+let cachedApp = null;
+
+const loadApp = () => {
+  if (cachedApp) return cachedApp;
+
+  const mod = require('../Backend/index.js');
+  const app = mod?.default ?? mod;
+  if (typeof app !== 'function') {
+    throw new Error('Backend app export is invalid.');
+  }
+
+  cachedApp = app;
+  return cachedApp;
+};
 
 export const config = {
   runtime: 'nodejs',
 };
 
 export default function handler(req, res) {
-  return app(req, res);
+  try {
+    const app = loadApp();
+    return app(req, res);
+  } catch (error) {
+    console.error('[api/[...path]] bootstrap failed', error);
+    if (!res.headersSent) {
+      return res.status(500).json({
+        error: 'API bootstrap failed',
+        message:
+          process.env.NODE_ENV === 'production'
+            ? 'Server boot failed. Check Vercel logs and database env settings.'
+            : error?.message || 'Unknown bootstrap error',
+      });
+    }
+    return undefined;
+  }
 }
