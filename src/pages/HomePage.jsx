@@ -17,6 +17,8 @@ export default function HomePage() {
   const { products: catalogProducts, ensureCollectionProducts } = useCatalog();
   const [latestProducts, setLatestProducts] = useState([]);
   const [moreProducts, setMoreProducts] = useState([]);
+  const [latestLoading, setLatestLoading] = useState(true);
+  const [moreLoading, setMoreLoading] = useState(true);
   const [selectedSkintone, setSelectedSkintone] = useState(null);
 
   const handleSkintoneScroll = () => {
@@ -50,8 +52,10 @@ export default function HomePage() {
     let cancelled = false;
 
     async function loadPrimary() {
+      setLatestLoading(true);
       if (!PRIMARY_HANDLE) {
         setLatestProducts(fallbackLatest);
+        setLatestLoading(false);
         return;
       }
       try {
@@ -67,6 +71,10 @@ export default function HomePage() {
         if (!cancelled) {
           setLatestProducts(fallbackLatest);
         }
+      } finally {
+        if (!cancelled) {
+          setLatestLoading(false);
+        }
       }
     }
 
@@ -81,8 +89,10 @@ export default function HomePage() {
     let cancelled = false;
 
     async function loadSecondary() {
+      setMoreLoading(true);
       if (!SECONDARY_HANDLE) {
         setMoreProducts(fallbackMore);
+        setMoreLoading(false);
         return;
       }
       try {
@@ -97,6 +107,10 @@ export default function HomePage() {
         console.warn(`Failed to load collection "${SECONDARY_HANDLE}"`, error);
         if (!cancelled) {
           setMoreProducts(fallbackMore);
+        }
+      } finally {
+        if (!cancelled) {
+          setMoreLoading(false);
         }
       }
     }
@@ -140,6 +154,7 @@ export default function HomePage() {
           products={latestProducts}
           ctaHref="/products?category=t-shirts"
           ctaLabel="Shop Now"
+          loading={latestLoading}
         />
       </div>
 
@@ -155,6 +170,7 @@ export default function HomePage() {
           products={moreProducts}
           ctaHref="/products"
           ctaLabel="View All"
+          loading={moreLoading}
         />
       </div>
     </div>

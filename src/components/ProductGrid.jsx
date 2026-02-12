@@ -22,7 +22,28 @@ const cardVariants = {
   visible: { opacity: 1, y: 0, transition: { duration: 0.45, ease: "easeOut" } },
 };
 
-export default function ProductGrid({ title, products, ctaHref = "/products", ctaLabel = "Discover More" }) {
+const ProductCardSkeleton = () => (
+  <div className="overflow-hidden rounded-md border border-neutral-200 bg-white">
+    <div className="aspect-[3/4] w-full animate-pulse bg-neutral-200" />
+    <div className="space-y-2 p-3">
+      <div className="h-3 w-2/3 animate-pulse rounded bg-neutral-200" />
+      <div className="h-3 w-1/2 animate-pulse rounded bg-neutral-200" />
+      <div className="h-3 w-1/3 animate-pulse rounded bg-neutral-200" />
+    </div>
+  </div>
+);
+
+export default function ProductGrid({
+  title,
+  products = [],
+  ctaHref = "/products",
+  ctaLabel = "Discover More",
+  loading = false,
+}) {
+  const hasProducts = Array.isArray(products) && products.length > 0;
+  const showSkeleton = loading && !hasProducts;
+  const skeletonItems = Array.from({ length: 4 }, (_, idx) => idx);
+
   return (
     // Keep desktop width capped so the four-up layout keeps similar card widths
     <section className="site-shell section-gap">
@@ -30,19 +51,25 @@ export default function ProductGrid({ title, products, ctaHref = "/products", ct
 
       {/* Four-up on large screens with consistent spacing */}
       <div className="grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-4 md:gap-4">
-        {products.map((item, idx) => (
-          <Motion.div
-            key={item.title + idx}
-            variants={cardVariants}
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true, amount: 0.3 }}
-            className="h-full"
-          >
-            <ProductCard item={item} />
-          </Motion.div>
-        ))}
+        {showSkeleton
+          ? skeletonItems.map((item) => <ProductCardSkeleton key={`skeleton-${item}`} />)
+          : products.map((item, idx) => (
+              <Motion.div
+                key={item.title + idx}
+                variants={cardVariants}
+                initial="hidden"
+                whileInView="visible"
+                viewport={{ once: true, amount: 0.3 }}
+                className="h-full"
+              >
+                <ProductCard item={item} />
+              </Motion.div>
+            ))}
       </div>
+
+      {!loading && !hasProducts ? (
+        <p className="py-5 text-center text-sm text-neutral-500">Products will appear here shortly.</p>
+      ) : null}
 
       <div className="flex justify-center py-5">
         <Link

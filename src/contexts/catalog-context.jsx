@@ -47,12 +47,29 @@ export const CatalogProvider = ({ children, productLimit = DEFAULT_PRODUCT_LIMIT
       }));
 
       try {
-        const [productsData, collectionsData] = await Promise.all([
+        const [productsResult, collectionsResult] = await Promise.allSettled([
           fetchAllProducts(productLimit),
           fetchCollections(16),
         ]);
 
         if (cancelled) return;
+
+        const productsData =
+          productsResult.status === 'fulfilled' && Array.isArray(productsResult.value)
+            ? productsResult.value
+            : [];
+        const collectionsData =
+          collectionsResult.status === 'fulfilled' && Array.isArray(collectionsResult.value)
+            ? collectionsResult.value
+            : [];
+
+        const errors = [productsResult, collectionsResult]
+          .filter((result) => result.status === 'rejected')
+          .map((result) => result.reason);
+
+        if (errors.length) {
+          console.error('Partial catalogue load failure', errors);
+        }
 
         const productByHandle = {};
         productsData.forEach((product) => {
@@ -67,9 +84,9 @@ export const CatalogProvider = ({ children, productLimit = DEFAULT_PRODUCT_LIMIT
 
         console.log('Catalog loaded:', { products: productsData.length, collections: collectionsData.length });
         setState({
-          status: 'ready',
+          status: productsData.length || collectionsData.length ? 'ready' : 'error',
           loading: false,
-          error: null,
+          error: errors[0] ?? null,
           products: productsData,
           productByHandle,
           productCards,
