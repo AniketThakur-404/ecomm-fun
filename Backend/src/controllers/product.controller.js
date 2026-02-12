@@ -638,6 +638,15 @@ exports.listProducts = async (req, res, next) => {
       res.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=300');
     }
     const mapped = products.map(toProductResponse);
+    if (process.env.NODE_ENV !== 'production' && categoryValue) {
+      console.log('[API] listProducts category', {
+        category: categoryValue,
+        include: includeMode || 'default',
+        total,
+        returned: mapped.length,
+        sampleHandles: mapped.slice(0, 5).map((item) => item.handle),
+      });
+    }
     return sendSuccess(res, mapped, { total, page: pageNumber, limit: take });
   } catch (error) {
     return next(error);

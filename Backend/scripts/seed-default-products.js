@@ -280,6 +280,29 @@ async function main() {
       }),
     },
     {
+      title: 'Weekend Knit Polo',
+      handle: 'weekend-knit-polo',
+      vendor: 'Aradhya',
+      productType: 'Knit',
+      apparelType: 'TOP',
+      category: 'Tops',
+      tags: ['polo', 'knit', 'weekend', 'new'],
+      descriptionHtml:
+        '<p>Soft knit polo with a relaxed drape and breathable texture for off-duty styling.</p>',
+      collectionIds: [tops.id],
+      media: [
+        { url: '/images/mk3.jpg', alt: 'Knit polo front' },
+        { url: '/images/mk4.jpg', alt: 'Knit polo detail' },
+      ],
+      options: topOptions,
+      variants: buildVariants(topOptions, {
+        price: 1399,
+        compareAtPrice: 1699,
+        inventory: 10,
+        skuPrefix: 'KNIT',
+      }),
+    },
+    {
       title: 'Slim Fit Trousers',
       handle: 'slim-fit-trousers',
       vendor: 'Aradhya',

@@ -180,6 +180,18 @@ exports.getCollectionBySlug = async (req, res, next) => {
     if (!collection) {
       return sendError(res, 404, 'Collection not found');
     }
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[API] getCollectionBySlug', {
+        slug: req.params.slug,
+        include: includeMode || 'default',
+        collection: {
+          id: collection.id,
+          handle: collection.handle,
+          title: collection.title,
+          productCount: collection?._count?.products ?? null,
+        },
+      });
+    }
     res.set('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=600');
     return sendSuccess(res, collection);
   } catch (error) {

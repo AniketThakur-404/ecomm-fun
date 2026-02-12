@@ -63,10 +63,6 @@ const CollectionPage = () => {
     const [searchParams, setSearchParams] = useSearchParams();
     const skintoneFilter = normalizeForMatch(searchParams.get('skintone'));
 
-    // We don't use 'occasion' filter here because the COLLECTION itself IS the occasion (e.g. date-wear)
-    // But we can keep it if user wants to filter further?
-    // User asked for "separate page" for occasion. So handle is likely 'date-wear'.
-
     const { ensureCollectionProducts } = useCatalog();
     const [products, setProducts] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -79,8 +75,14 @@ const CollectionPage = () => {
 
         async function loadCollection() {
             try {
-                // We fetch the collection processing/metadata
+                // LOG 1: Request Init
+                console.log(`%c[API] Fetching collection: ${handle}`, 'color: #00d1ff; font-weight: bold');
+                
                 const result = await fetchCollectionByHandle(handle);
+                
+                // LOG 2: Primary API Response
+                console.log('%c[API] Success (fetchCollectionByHandle):', 'color: #4caf50; font-weight: bold', result);
+
                 if (!cancelled) {
                     if (result) {
                         setCollectionInfo({
@@ -90,14 +92,20 @@ const CollectionPage = () => {
                         });
                         setProducts(result.products || []);
                     } else {
-                        // Fallback if direct fetch fails or returns null
+                        // LOG 3: Fallback warning
+                        console.warn(`%c[API] No result for "${handle}". Triggering ensureCollectionProducts...`, 'color: #ff9800');
+                        
                         const cols = await ensureCollectionProducts(handle);
-                        setProducts(cols);
+                        
+                        // LOG 4: Fallback Response
+                        console.log('%c[API] Fallback Result:', 'color: #ff9800; font-weight: bold', cols);
+                        
+                        setProducts(cols || []);
                         setCollectionInfo({ title: handle.replace(/-/g, ' '), description: '' });
                     }
                 }
             } catch (e) {
-                console.error(`Failed to load collection: ${handle}`, e);
+                console.error(`%c[API] Error loading collection: ${handle}`, 'color: #f44336; font-weight: bold', e);
                 if (!cancelled) setProducts([]);
             } finally {
                 if (!cancelled) setLoading(false);
@@ -111,10 +119,14 @@ const CollectionPage = () => {
         return () => { cancelled = true; };
     }, [handle, ensureCollectionProducts]);
 
-
     const sortedProducts = useMemo(() => {
         const applySkintone = skintoneFilter && skintoneFilter !== 'all';
         let filtered = products;
+
+        // LOG 5: Data transformation tracking
+        if (products.length > 0) {
+            console.log(`%c[Logic] Processing ${products.length} products. Skintone: ${skintoneFilter || 'none'}, Sort: ${sortBy}`, 'color: #9c27b0');
+        }
 
         if (applySkintone) {
             filtered = products.filter((product) => productMatchesFilter(product, skintoneFilter));
@@ -128,7 +140,15 @@ const CollectionPage = () => {
         } else if (sortBy === 'new') {
             sorted.sort((a, b) => String(b?.id || '').localeCompare(String(a?.id || '')));
         }
-        return sorted.map(toProductCard).filter(Boolean);
+        
+        const finalResults = sorted.map(toProductCard).filter(Boolean);
+        
+        // LOG 6: Final count
+        if (products.length > 0) {
+            console.log(`%c[Logic] Final products to display: ${finalResults.length}`, 'color: #9c27b0; font-weight: bold');
+        }
+
+        return finalResults;
     }, [products, sortBy, skintoneFilter]);
 
     const updateFilter = (key, value) => {
@@ -143,13 +163,11 @@ const CollectionPage = () => {
 
     return (
         <div className="bg-white min-h-screen">
-            {/* Mobile Header */}
             <MobilePageHeader
                 title={collectionInfo?.title || handle}
                 onSearch={() => document.dispatchEvent(new CustomEvent('open-search'))}
             />
 
-            {/* Hero / Header Section for Collection */}
             <div className="site-shell pt-6 pb-4">
                 <div className="text-xs text-gray-500 mb-2">
                     Home / Collections / <span className="font-bold text-gray-800 capitalize">{collectionInfo?.title || handle}</span>
@@ -170,13 +188,9 @@ const CollectionPage = () => {
                 </div>
             </div>
 
-            {/* Filter Bar */}
             <div className="border-t border-b border-gray-200 bg-white sticky top-16 z-30">
                 <div className="site-shell py-3 flex justify-between items-center gap-4">
-                    {/* Left: Filters */}
                     <div className="flex items-center gap-2 md:gap-4 overflow-x-auto no-scrollbar whitespace-nowrap flex-1">
-
-                        {/* Skin Tone Filter */}
                         <div className="relative group">
                             <button className={`flex items-center gap-1 text-sm font-bold px-4 py-2 rounded-full transition-colors whitespace-nowrap ${skintoneFilter ? 'bg-black text-white' : 'text-gray-700 hover:bg-gray-100'
                                 }`}>
@@ -190,8 +204,7 @@ const CollectionPage = () => {
                             </div>
                         </div>
 
-                        {/* Clear Filters */}
-                        {(skintoneFilter) && (
+                        {skintoneFilter && (
                             <button
                                 onClick={() => setSearchParams(new URLSearchParams())}
                                 className="text-xs text-red-600 font-bold hover:underline"
@@ -199,10 +212,8 @@ const CollectionPage = () => {
                                 Reset
                             </button>
                         )}
-
                     </div>
 
-                    {/* Right: Sort */}
                     <div className="flex-shrink-0 flex items-center gap-2 border border-gray-200 px-3 py-2 rounded-sm cursor-pointer hover:border-gray-400 relative group">
                         <span className="text-sm text-gray-500 hidden sm:inline">Sort by:</span>
                         <span className="text-sm font-bold text-gray-800 capitalize">{sortBy.replace('_', ' ')}</span>
@@ -218,7 +229,6 @@ const CollectionPage = () => {
                 </div>
             </div>
 
-            {/* Product Grid */}
             <div className="site-shell py-8">
                 {loading ? (
                     <div className="flex justify-center py-20 text-gray-500">Loading collection...</div>
