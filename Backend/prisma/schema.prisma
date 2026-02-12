@@ -15,7 +15,7 @@ model User {
   passwordHash String?
   createdAt    DateTime            @default(now())
   updatedAt    DateTime            @updatedAt
-  role         String              @default("CUSTOMER")
+  role         Role                @default(CUSTOMER)
   resetTokens  PasswordResetToken?
   reviews      Review[]
   orders       Order[]
@@ -373,6 +373,7 @@ enum ApparelType {
   BOTTOM
   SHOES
   ACCESSORY
+  SET
   OTHER
 }
 

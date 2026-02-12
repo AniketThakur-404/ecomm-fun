@@ -426,6 +426,7 @@ const productListSelect = {
       position: true,
     },
     orderBy: { position: 'asc' },
+    take: 2,
   },
 };
 
@@ -544,6 +545,24 @@ const buildVariantTitle = (variant, optionOrder) => {
     .filter((value) => value && String(value).trim() !== '');
   return parts.length ? parts.join(' / ') : 'Default';
 };
+/* ── Lightweight in-memory cache for public product lists ── */
+const productListCache = new Map();
+const PRODUCT_CACHE_TTL = 60_000; // 60 seconds
+const PRODUCT_CACHE_MAX = 50;
+
+const getCachedOrFetch = async (cacheKey, fetcher) => {
+  const cached = productListCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.value;
+  if (cached) productListCache.delete(cacheKey);
+  const value = await fetcher();
+  if (productListCache.size >= PRODUCT_CACHE_MAX) {
+    const oldest = productListCache.keys().next().value;
+    productListCache.delete(oldest);
+  }
+  productListCache.set(cacheKey, { value, expiresAt: Date.now() + PRODUCT_CACHE_TTL });
+  return value;
+};
+
 exports.listProducts = async (req, res, next) => {
   try {
     const prisma = await getPrisma();
@@ -628,17 +647,23 @@ exports.listProducts = async (req, res, next) => {
     let total;
     let products;
 
-    if (skipCount) {
-      products = await prisma.product.findMany({
-        where,
-        orderBy: { createdAt: 'desc' },
-        ...includeRelations,
-        take,
-        skip,
-      });
-      total = -1; // Indicates count was skipped
-    } else {
-      [products, total] = await Promise.all([
+    const isPublicGet = !isAdminRoute && !req.headers?.authorization;
+    const cacheKey = isPublicGet
+      ? `products:${JSON.stringify({ where, take, skip, includeMode, skipCount })}`
+      : null;
+
+    const fetchData = async () => {
+      if (skipCount) {
+        const rows = await prisma.product.findMany({
+          where,
+          orderBy: { createdAt: 'desc' },
+          ...includeRelations,
+          take,
+          skip,
+        });
+        return { products: rows, total: -1 };
+      }
+      const [rows, count] = await Promise.all([
         prisma.product.findMany({
           where,
           orderBy: { createdAt: 'desc' },
@@ -648,7 +673,14 @@ exports.listProducts = async (req, res, next) => {
         }),
         prisma.product.count({ where }),
       ]);
-    }
+      return { products: rows, total: count };
+    };
+
+    const result = cacheKey
+      ? await getCachedOrFetch(cacheKey, fetchData)
+      : await fetchData();
+    products = result.products;
+    total = result.total;
 
     if (!isAdminRoute) {
       res.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=300');
@@ -673,16 +705,24 @@ exports.getProduct = async (req, res, next) => {
   try {
     const prisma = await getPrisma();
     const identifier = req.params.id;
+
+    // Detect whether identifier is a cuid (id) or a handle to avoid double query
+    const isCuid = /^c[a-z0-9]{20,30}$/.test(identifier);
+    const where = isCuid ? { id: identifier } : { handle: identifier };
+
     let product = await prisma.product.findUnique({
-      where: { id: identifier },
+      where,
       include: productInclude,
     });
-    if (!product) {
+
+    // Fallback: if cuid lookup failed, try by handle (rare edge case)
+    if (!product && isCuid) {
       product = await prisma.product.findUnique({
         where: { handle: identifier },
         include: productInclude,
       });
     }
+
     if (!product) {
       return sendError(res, 404, 'Product not found');
     }

@@ -99,19 +99,36 @@ exports.getMyOrders = async (req, res, next) => {
   }
 };
 
-exports.listOrders = async (_req, res, next) => {
+exports.listOrders = async (req, res, next) => {
   try {
     const prisma = await getPrisma();
-    const orders = await prisma.order.findMany({
-      include: { user: { select: { id: true, email: true, name: true } } },
-      orderBy: { createdAt: "desc" },
-    });
+    const take = Math.min(Number.parseInt(req.query?.limit, 10) || 50, 200);
+    const pageNumber = Math.max(Number.parseInt(req.query?.page, 10) || 1, 1);
+    const skip = (pageNumber - 1) * take;
+
+    const [orders, total] = await Promise.all([
+      prisma.order.findMany({
+        include: { user: { select: { id: true, email: true, name: true } } },
+        orderBy: { createdAt: "desc" },
+        take,
+        skip,
+      }),
+      prisma.order.count(),
+    ]);
+
+    // Summary counts use full table (lightweight count queries)
+    const [pending, paid, fulfilled] = await Promise.all([
+      prisma.order.count({ where: { status: OrderStatus.PENDING } }),
+      prisma.order.count({ where: { status: OrderStatus.PAID } }),
+      prisma.order.count({ where: { status: OrderStatus.FULFILLED } }),
+    ]);
 
     const summary = {
-      total: orders.length,
-      pending: orders.filter((o) => o.status === OrderStatus.PENDING).length,
-      paid: orders.filter((o) => o.status === OrderStatus.PAID).length,
-      fulfilled: orders.filter((o) => o.status === OrderStatus.FULFILLED).length,
+      total,
+      pending,
+      paid,
+      fulfilled,
+      // Revenue is computed from the current page only (for true total, use a dedicated analytics endpoint)
       revenue: orders.reduce((acc, o) => acc + (Number(o.totals?.total) || 0), 0),
     };
 
@@ -121,7 +138,7 @@ exports.listOrders = async (_req, res, next) => {
         customer: order.user ? { id: order.user.id, name: order.user.name, email: order.user.email } : null,
       })),
       summary,
-    });
+    }, { total, page: pageNumber, limit: take });
   } catch (error) {
     return next(error);
   }
@@ -192,7 +209,7 @@ exports.trackOrder = async (req, res, next) => {
       !payload.email || String(shipping.email || "").toLowerCase() === payload.email.toLowerCase();
     const phoneMatches =
       !payload.phone || String(shipping.phone || "").replace(/[^\d+]/g, "") ===
-        String(payload.phone || "").replace(/[^\d+]/g, "");
+      String(payload.phone || "").replace(/[^\d+]/g, "");
 
     if (payload.email && !emailMatches) {
       return sendError(res, 404, "No order found for those details.");

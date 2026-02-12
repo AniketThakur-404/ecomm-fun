@@ -106,7 +106,7 @@ const extractList = (payload, label) => {
 
 const inflightRequests = new Map();
 const responseCache = new Map();
-const RESPONSE_CACHE_TTL = 20000;
+const RESPONSE_CACHE_TTL = 60_000;
 
 const request = async (path, { method = 'GET', headers = {}, body } = {}) => {
   const url = path.startsWith('http') ? path : `${API_URL}${path}`;
@@ -297,59 +297,59 @@ const mapProduct = (product) => {
 
   const options = Array.isArray(product.options)
     ? product.options.map((option) => ({
-        name: option.name,
-        values: option.values ?? [],
-      }))
+      name: option.name,
+      values: option.values ?? [],
+    }))
     : [];
 
   const variants = Array.isArray(product.variants)
     ? product.variants.map((variant) => {
-        const hasInventoryLevels = Object.prototype.hasOwnProperty.call(
-          variant || {},
-          'inventoryLevels',
-        );
-        const inventoryLevels = hasInventoryLevels && Array.isArray(variant.inventoryLevels)
-          ? variant.inventoryLevels
-          : [];
-        const quantityAvailable = hasInventoryLevels
-          ? inventoryLevels.reduce(
-              (sum, level) => sum + (Number(level.available) || 0),
-              0,
-            )
-          : null;
-        const availableForSale =
-          variant.trackInventory === false
-            ? true
-            : hasInventoryLevels
+      const hasInventoryLevels = Object.prototype.hasOwnProperty.call(
+        variant || {},
+        'inventoryLevels',
+      );
+      const inventoryLevels = hasInventoryLevels && Array.isArray(variant.inventoryLevels)
+        ? variant.inventoryLevels
+        : [];
+      const quantityAvailable = hasInventoryLevels
+        ? inventoryLevels.reduce(
+          (sum, level) => sum + (Number(level.available) || 0),
+          0,
+        )
+        : null;
+      const availableForSale =
+        variant.trackInventory === false
+          ? true
+          : hasInventoryLevels
             ? quantityAvailable > 0
             : true;
 
-        const selectedOptions = variant.optionValues
-          ? Object.entries(variant.optionValues).map(([name, value]) => ({
-              name,
-              value,
-            }))
-          : [];
+      const selectedOptions = variant.optionValues
+        ? Object.entries(variant.optionValues).map(([name, value]) => ({
+          name,
+          value,
+        }))
+        : [];
 
-        const compareAtPrice = variant.compareAtPrice
-          ? {
-              amount: toNumber(variant.compareAtPrice, 0),
-              currencyCode,
-            }
-          : null;
-
-        return {
-          id: variant.id,
-          title: variant.title,
-          availableForSale,
-          sku: variant.sku ?? null,
-          quantityAvailable,
-          price: toNumber(variant.price, 0),
+      const compareAtPrice = variant.compareAtPrice
+        ? {
+          amount: toNumber(variant.compareAtPrice, 0),
           currencyCode,
-          compareAtPrice,
-          selectedOptions,
-        };
-      })
+        }
+        : null;
+
+      return {
+        id: variant.id,
+        title: variant.title,
+        availableForSale,
+        sku: variant.sku ?? null,
+        quantityAvailable,
+        price: toNumber(variant.price, 0),
+        currencyCode,
+        compareAtPrice,
+        selectedOptions,
+      };
+    })
     : [];
 
   const prices = variants
@@ -382,8 +382,8 @@ const mapProduct = (product) => {
     reviewsList && reviewsList.length
       ? JSON.stringify({ reviews: reviewsList, averageRating, reviewCount })
       : averageRating != null || reviewCount
-      ? JSON.stringify({ averageRating, reviewCount })
-      : null;
+        ? JSON.stringify({ averageRating, reviewCount })
+        : null;
 
   const optionValues = {};
   options.forEach((option) => {
@@ -518,7 +518,7 @@ export function toProductCard(product) {
 }
 
 export const fetchAllProducts = async (limit = 100, page = 1) => {
-  const payload = await request(`/products${buildQuery({ limit, page, include: 'compact' })}`);
+  const payload = await request(`/products${buildQuery({ limit, page, include: 'compact', skipCount: 'true' })}`);
   const items = extractList(payload, 'products');
   return items.map(mapProduct).filter(Boolean);
 };
