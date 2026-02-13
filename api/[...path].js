@@ -29,10 +29,8 @@ export default function handler(req, res) {
     if (!res.headersSent) {
       return res.status(500).json({
         error: 'API bootstrap failed',
-        message:
-          process.env.NODE_ENV === 'production'
-            ? 'Server boot failed. Check Vercel logs and database env settings.'
-            : error?.message || 'Unknown bootstrap error',
+        message: error?.message || 'Unknown bootstrap error',
+        stack: process.env.NODE_ENV !== 'production' ? error?.stack : undefined,
       });
     }
     return undefined;
