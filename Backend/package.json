@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "nodemon index.js",
     "start": "node index.js",
+    "build": "prisma generate",
     "test": "echo \"Error: no test specified\" && exit 1",
     "prisma:generate": "prisma generate",
     "patch:prisma": "node scripts/patch-prisma-wasm-loader.cjs",
@@ -32,12 +33,12 @@
     "jsonwebtoken": "^9.0.2",
     "multer": "^1.4.5-lts.1",
     "pg": "^8.16.3",
+    "prisma": "^7.4.0",
     "ws": "^8.18.3",
     "zod": "^3.23.8"
   },
   "devDependencies": {
     "cross-env": "^10.1.0",
-    "nodemon": "^3.1.10",
-    "prisma": "^7.4.0"
+    "nodemon": "^3.1.10"
   }
 }
