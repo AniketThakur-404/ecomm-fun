@@ -2,19 +2,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const { sendSuccess, sendError } = require('../utils/response');
-const uploadsDir = path.join(__dirname, '../../uploads');
-
-function ensureUploadsDir() {
-  try {
-    if (!fs.existsSync(uploadsDir)) {
-      fs.mkdirSync(uploadsDir, { recursive: true });
-    }
-  } catch {
-    // Vercel serverless: filesystem is read-only, skip silently
-  }
-}
-
-ensureUploadsDir();
+const { getUploadsDir } = require('../utils/uploads');
 
 const getUploadUrl = (req, filename) => {
   const baseUrl = `${req.protocol}://${req.get('host')}`;
@@ -38,6 +26,7 @@ const uploadSuccess = (req, res) => {
 
 const deleteUpload = (req, res) => {
   const filename = req.params.filename;
+  const uploadsDir = getUploadsDir();
   const filepath = path.join(uploadsDir, filename);
   if (!fs.existsSync(filepath)) {
     return sendError(res, 404, 'File not found');

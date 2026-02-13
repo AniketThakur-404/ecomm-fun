@@ -428,6 +428,11 @@ const productListSelect = {
     orderBy: { position: 'asc' },
     take: 2,
   },
+  _count: {
+    select: {
+      media: true,
+    },
+  },
 };
 
 const productCompactSelect = {
@@ -476,6 +481,11 @@ const productCompactSelect = {
     },
     orderBy: { price: 'asc' },
     take: 1,
+  },
+  _count: {
+    select: {
+      media: true,
+    },
   },
 };
 
@@ -1025,38 +1035,128 @@ const parseCsv = (text) => {
   return rows;
 };
 
+const parseCsvBoolean = (value) => {
+  const normalized = String(value ?? '').trim().toLowerCase();
+  if (!normalized) return null;
+  if (['true', 'yes', '1', 'y'].includes(normalized)) return true;
+  if (['false', 'no', '0', 'n'].includes(normalized)) return false;
+  return null;
+};
+
+const normalizeImportedImageUrl = (value) => {
+  const raw = String(value ?? '').trim().replace(/^"+|"+$/g, '');
+  if (!raw) return '';
+  if (raw.startsWith('//')) return `https:${raw}`;
+  return raw;
+};
+
+const splitCsvImageCell = (value) => {
+  const raw = String(value ?? '').trim();
+  if (!raw) return [];
+  return raw
+    .split('|')
+    .flatMap((part) => String(part).split('\n'))
+    .map((part) => normalizeImportedImageUrl(part))
+    .filter(Boolean);
+};
+
+const hasVariantData = (variant) => {
+  if (!variant || typeof variant !== 'object') return false;
+  const primitives = [
+    variant.sku,
+    variant.barcode,
+    variant.price,
+    variant.compareAtPrice,
+    variant.costPerItem,
+    variant.taxable,
+    variant.trackInventory,
+    variant.inventoryPolicy,
+    variant.requiresShipping,
+    variant.weight,
+    variant.weightUnit,
+    variant.originCountryCode,
+    variant.hsCode,
+    variant.imageUrl,
+  ];
+  if (
+    primitives.some((value) => value !== undefined && value !== null && String(value).trim() !== '')
+  ) {
+    return true;
+  }
+  if (variant.optionValues && Object.keys(variant.optionValues).length) {
+    return true;
+  }
+  if (
+    variant.inventory &&
+    (
+      variant.inventory.available !== undefined ||
+      (variant.inventory.location && String(variant.inventory.location).trim() !== '')
+    )
+  ) {
+    return true;
+  }
+  return false;
+};
+
 const parseCsvProducts = (text) => {
   const rows = parseCsv(text);
   if (!rows.length) return [];
   const header = rows[0].map((cell) => cell.trim());
   const dataRows = rows.slice(1);
 
-  const get = (row, key) => {
-    const index = header.indexOf(key);
-    if (index < 0) return '';
-    return row[index] ?? '';
+  const headerIndex = new Map();
+  header.forEach((key, index) => {
+    const normalized = String(key || '').trim().toLowerCase();
+    if (!normalized || headerIndex.has(normalized)) return;
+    headerIndex.set(normalized, index);
+  });
+
+  const get = (row, keys) => {
+    const keyList = Array.isArray(keys) ? keys : [keys];
+    let fallback = '';
+
+    for (const key of keyList) {
+      const normalized = String(key || '').trim().toLowerCase();
+      if (!normalized) continue;
+      const index = headerIndex.get(normalized);
+      if (index === undefined) continue;
+      const value = row[index] ?? '';
+      const stringValue = String(value);
+      if (!fallback) fallback = stringValue;
+      if (stringValue.trim() !== '') return stringValue;
+    }
+
+    return fallback;
   };
 
   const productsByHandle = new Map();
 
   dataRows.forEach((row) => {
-    const handle = String(get(row, 'Handle') || '').trim();
-    const title = String(get(row, 'Title') || '').trim();
+    const handle = String(get(row, ['Handle']) || '').trim();
+    const title = String(get(row, ['Title']) || '').trim();
     if (!handle && !title) return;
 
     const productKey = handle || slugify(title) || title;
     if (!productsByHandle.has(productKey)) {
+      const statusRaw = String(get(row, ['Status']) || '').trim().toUpperCase();
+      const published = parseCsvBoolean(get(row, ['Published']));
+      const status = PRODUCT_STATUS.includes(statusRaw)
+        ? statusRaw
+        : published === true
+          ? 'ACTIVE'
+          : 'DRAFT';
+
       productsByHandle.set(productKey, {
         handle: handle || slugify(title) || title,
         title: title || handle,
-        status: String(get(row, 'Status') || 'DRAFT').toUpperCase(),
-        vendor: String(get(row, 'Vendor') || '').trim() || undefined,
-        productType: String(get(row, 'ProductType') || '').trim() || undefined,
-        apparelType: String(get(row, 'ApparelType') || '').trim() || undefined,
-        category: String(get(row, 'Category') || '').trim() || undefined,
-        tags: normalizeTags(get(row, 'Tags')),
-        descriptionHtml: String(get(row, 'DescriptionHtml') || '').trim() || undefined,
-        collectionHandles: String(get(row, 'Collections') || '')
+        status,
+        vendor: String(get(row, ['Vendor']) || '').trim() || undefined,
+        productType: String(get(row, ['ProductType', 'Type']) || '').trim() || undefined,
+        apparelType: String(get(row, ['ApparelType']) || '').trim() || undefined,
+        category: String(get(row, ['Category', 'Product Category']) || '').trim() || undefined,
+        tags: normalizeTags(get(row, ['Tags'])),
+        descriptionHtml: String(get(row, ['DescriptionHtml', 'Body (HTML)', 'Body HTML']) || '').trim() || undefined,
+        collectionHandles: String(get(row, ['Collections', 'Collection']) || '')
           .split('|')
           .flatMap((chunk) => chunk.split(','))
           .map((value) => value.trim())
@@ -1068,24 +1168,29 @@ const parseCsvProducts = (text) => {
     }
 
     const product = productsByHandle.get(productKey);
-    const imageSrcs = String(get(row, 'Image Srcs') || '').trim();
-    if (imageSrcs) {
-      imageSrcs
-        .split('|')
-        .map((value) => value.trim())
-        .filter(Boolean)
-        .forEach((url) => product.media.push({ url }));
+    if (!product.title && title) {
+      product.title = title;
+    }
+
+    const imageCell = get(row, ['Image Srcs', 'Image Src', 'Image URL', 'Image Url']);
+    splitCsvImageCell(imageCell).forEach((url) => product.media.push({ url }));
+
+    const variantImageUrl = normalizeImportedImageUrl(
+      get(row, ['Variant Image', 'Variant Image URL', 'Variant Image Url']),
+    );
+    if (variantImageUrl) {
+      product.media.push({ url: variantImageUrl });
     }
 
     const optionNames = [
-      String(get(row, 'Option1 Name') || '').trim(),
-      String(get(row, 'Option2 Name') || '').trim(),
-      String(get(row, 'Option3 Name') || '').trim(),
+      String(get(row, ['Option1 Name']) || '').trim(),
+      String(get(row, ['Option2 Name']) || '').trim(),
+      String(get(row, ['Option3 Name']) || '').trim(),
     ];
     const optionValues = [
-      String(get(row, 'Option1 Value') || '').trim(),
-      String(get(row, 'Option2 Value') || '').trim(),
-      String(get(row, 'Option3 Value') || '').trim(),
+      String(get(row, ['Option1 Value']) || '').trim(),
+      String(get(row, ['Option2 Value']) || '').trim(),
+      String(get(row, ['Option3 Value']) || '').trim(),
     ];
 
     const optionValueMap = {};
@@ -1096,31 +1201,45 @@ const parseCsvProducts = (text) => {
     });
 
     const variant = {
-      sku: String(get(row, 'Variant SKU') || '').trim() || undefined,
-      barcode: String(get(row, 'Variant Barcode') || '').trim() || undefined,
-      price: toNumber(get(row, 'Variant Price')),
-      compareAtPrice: toNumber(get(row, 'Variant CompareAtPrice')),
-      costPerItem: toNumber(get(row, 'Variant Cost')),
-      taxable: toBoolean(get(row, 'Variant Taxable')),
-      trackInventory: toBoolean(get(row, 'Variant TrackInventory')),
-      inventoryPolicy: String(get(row, 'Variant InventoryPolicy') || '').trim() || undefined,
-      requiresShipping: toBoolean(get(row, 'Variant RequiresShipping')),
-      weight: toNumber(get(row, 'Variant Weight')),
-      weightUnit: String(get(row, 'Variant WeightUnit') || '').trim() || undefined,
-      originCountryCode: String(get(row, 'Variant OriginCountry') || '').trim() || undefined,
-      hsCode: String(get(row, 'Variant HSCode') || '').trim() || undefined,
-      imageUrl: String(get(row, 'Variant Image') || '').trim() || undefined,
+      sku: String(get(row, ['Variant SKU', 'SKU']) || '').trim() || undefined,
+      barcode: String(get(row, ['Variant Barcode', 'Barcode']) || '').trim() || undefined,
+      price: toNumber(get(row, ['Variant Price'])),
+      compareAtPrice: toNumber(get(row, ['Variant CompareAtPrice', 'Variant Compare At Price'])),
+      costPerItem: toNumber(get(row, ['Variant Cost', 'Cost per item'])),
+      taxable: toBoolean(get(row, ['Variant Taxable', 'Taxable'])),
+      trackInventory: toBoolean(get(row, ['Variant TrackInventory'])),
+      inventoryPolicy: String(get(row, ['Variant InventoryPolicy', 'Variant Inventory Policy']) || '').trim() || undefined,
+      requiresShipping: toBoolean(get(row, ['Variant RequiresShipping', 'Variant Requires Shipping'])),
+      weight: toNumber(get(row, ['Variant Weight'])),
+      weightUnit: String(get(row, ['Variant WeightUnit', 'Variant Weight Unit']) || '').trim() || undefined,
+      originCountryCode: String(get(row, ['Variant OriginCountry', 'Variant Origin Country']) || '').trim() || undefined,
+      hsCode: String(get(row, ['Variant HSCode', 'Variant HS Code']) || '').trim() || undefined,
+      imageUrl: variantImageUrl || undefined,
       inventory: {
-        available: toNumber(get(row, 'Variant Inventory Available')),
-        location: String(get(row, 'Variant Inventory Location') || '').trim() || undefined,
+        available: toNumber(get(row, ['Variant Inventory Available', 'Variant Inventory Qty'])),
+        location: String(get(row, ['Variant Inventory Location']) || '').trim() || undefined,
       },
       optionValues: Object.keys(optionValueMap).length ? optionValueMap : undefined,
     };
 
-    product.variants.push(variant);
+    if (hasVariantData(variant)) {
+      product.variants.push(variant);
+    }
   });
 
   productsByHandle.forEach((product) => {
+    const seenMedia = new Set();
+    product.media = product.media
+      .map((item) => ({
+        ...item,
+        url: normalizeImportedImageUrl(item?.url),
+      }))
+      .filter((item) => {
+        if (!item.url || seenMedia.has(item.url)) return false;
+        seenMedia.add(item.url);
+        return true;
+      });
+
     const optionMap = new Map();
     product.variants.forEach((variant) => {
       const values = variant.optionValues || {};

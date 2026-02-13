@@ -103,6 +103,32 @@ const formatReviewDate = (value) => {
   return parsed.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 };
 
+const normalizeMetafieldText = (value) => {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value)) {
+    return value.map((entry) => String(entry ?? '').trim()).filter(Boolean).join(', ');
+  }
+  if (typeof value === 'object') {
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return String(value);
+    }
+  }
+  return String(value);
+};
+
+const readCustomMetafield = (metafields, keys) => {
+  const keySet = new Set(keys.map((key) => normaliseTokenValue(key)));
+  const fields = Array.isArray(metafields) ? metafields : [];
+  const match = fields.find((field) => {
+    if (normaliseTokenValue(field?.namespace) !== 'custom') return false;
+    return keySet.has(normaliseTokenValue(field?.key));
+  });
+  return normalizeMetafieldText(match?.value);
+};
+
 const ProductDetails = () => {
   const { slug } = useParams();
   const navigate = useNavigate();
@@ -133,6 +159,7 @@ const ProductDetails = () => {
   const [recommendedProducts, setRecommendedProducts] = useState([]);
   const [selectedFbtItems, setSelectedFbtItems] = useState(new Set());
   const [showSizeModal, setShowSizeModal] = useState(false);
+  const [showSizeChart, setShowSizeChart] = useState(false);
   const productHandle = product?.handle || '';
   const reviewData = useMemo(
     () => parseReviewPayload(product?.reviewsJson),
@@ -264,6 +291,7 @@ const ProductDetails = () => {
     });
     setImages(media);
     setActiveImageIndex(0);
+    setShowSizeChart(false);
   }, [product]);
 
   const sizeOptions = useMemo(() => extractSizeOptions(product), [product]);
@@ -288,6 +316,21 @@ const ProductDetails = () => {
   }, [product]);
   const hasSizes = sizeOptions.length > 0;
   const hasColors = colorOptions.length > 0;
+  const sizeChartData = useMemo(
+    () => ({
+      imageUrl: readCustomMetafield(product?.metafields, [
+        'size_chart_image',
+        'size_chart_url',
+      ]),
+      text: readCustomMetafield(product?.metafields, [
+        'size_chart_text',
+        'size_guide',
+      ]),
+    }),
+    [product?.metafields],
+  );
+  const hasSizeChart =
+    Boolean(sizeChartData.imageUrl?.trim()) || Boolean(sizeChartData.text?.trim());
   const comboItems = useMemo(() => product?.comboItems ?? [], [product]);
   const hasComboItems = comboItems.length > 0;
   const selectedComboList = useMemo(
@@ -480,6 +523,17 @@ const ProductDetails = () => {
     // Otherwise, just add main product and go to cart
     addItem(product.handle, { size: selectedSize, quantity: 1 });
     navigate('/cart');
+  };
+
+  const handleOpenSizeChart = () => {
+    if (!hasSizeChart) {
+      notify({
+        title: 'Size chart unavailable',
+        message: 'No size chart is available for this product yet.',
+      });
+      return;
+    }
+    setShowSizeChart(true);
   };
 
   const handleConfirmSizes = (itemsWithSizes) => {
@@ -1004,7 +1058,11 @@ const ProductDetails = () => {
                   <span className="text-xs font-bold text-gray-900 uppercase tracking-wider">
                     Sizes
                   </span>
-                  <button className="text-xs font-medium text-gray-500 underline hover:text-black">
+                  <button
+                    type="button"
+                    onClick={handleOpenSizeChart}
+                    className="text-xs font-medium text-gray-500 underline hover:text-black"
+                  >
                     SIZE CHART
                   </button>
                 </div>
@@ -1078,6 +1136,41 @@ const ProductDetails = () => {
 
 
 
+
+            {showSizeChart && (
+              <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+                <div className="w-full max-w-xl overflow-hidden rounded-lg bg-white shadow-2xl">
+                  <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3">
+                    <p className="text-sm font-bold uppercase tracking-wide text-gray-900">
+                      Size Chart
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setShowSizeChart(false)}
+                      className="rounded border border-gray-200 px-3 py-1 text-xs font-semibold text-gray-600 hover:bg-gray-100"
+                    >
+                      Close
+                    </button>
+                  </div>
+                  <div className="max-h-[75vh] space-y-4 overflow-y-auto p-4">
+                    {sizeChartData.imageUrl ? (
+                      <div className="overflow-hidden rounded border border-gray-200 bg-gray-50 p-2">
+                        <img
+                          src={sizeChartData.imageUrl}
+                          alt="Product size chart"
+                          className="max-h-[60vh] w-full object-contain"
+                        />
+                      </div>
+                    ) : null}
+                    {sizeChartData.text ? (
+                      <div className="rounded border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700 whitespace-pre-line">
+                        {sizeChartData.text}
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+            )}
 
             <SizeSelectionModal
               isOpen={showSizeModal}

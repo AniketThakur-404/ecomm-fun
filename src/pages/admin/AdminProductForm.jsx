@@ -1,9 +1,10 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   adminCreateProduct,
   adminUpdateProduct,
   adminFetchCollections,
+  adminFetchProducts,
   fetchProductRaw,
   uploadImage,
 } from '../../lib/api';
@@ -38,7 +39,9 @@ const parseHandleList = (value) => {
     if (Array.isArray(parsed)) {
       return parsed.map((item) => String(item).trim()).filter(Boolean);
     }
-  } catch { }
+  } catch {
+    // fall through to comma-separated parsing
+  }
   return normalizeStringArray(raw.replace(/\|/g, ','));
 };
 
@@ -54,7 +57,9 @@ const formatHandleList = (value) => {
     if (Array.isArray(parsed)) {
       return parsed.map((item) => String(item).trim()).filter(Boolean).join(', ');
     }
-  } catch { }
+  } catch {
+    // fall through to plain text formatting
+  }
   return raw;
 };
 
@@ -75,6 +80,38 @@ const cartesian = (arrays) =>
     [[]],
   );
 
+const RESERVED_CUSTOM_METAFIELD_KEYS = new Set([
+  'combo_items',
+  'bundle_items',
+  'size_chart_image',
+  'size_chart_text',
+]);
+
+const normalizeToken = (value) => String(value || '').trim().toLowerCase();
+
+const isCustomMetafield = (field, keys) => {
+  if (!field) return false;
+  if (normalizeToken(field.namespace) !== 'custom') return false;
+  return keys.includes(normalizeToken(field.key));
+};
+
+const readCustomMetafield = (fields, keys) => {
+  const entry = (Array.isArray(fields) ? fields : []).find((field) =>
+    isCustomMetafield(field, keys),
+  );
+  if (!entry) return '';
+  if (typeof entry.value === 'string') return entry.value;
+  if (entry.value === null || entry.value === undefined) return '';
+  try {
+    return JSON.stringify(entry.value);
+  } catch {
+    return String(entry.value);
+  }
+};
+
+const createUploadId = () =>
+  `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
 const AdminProductForm = () => {
   const { id } = useParams();
   const isNew = id === 'new';
@@ -86,8 +123,11 @@ const AdminProductForm = () => {
   const [error, setError] = useState('');
   const [collections, setCollections] = useState([]);
   const [newImageUrl, setNewImageUrl] = useState('');
+  const [pendingUploads, setPendingUploads] = useState([]);
+  const [sizeChartUploading, setSizeChartUploading] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
   const [bundleProducts, setBundleProducts] = useState([]); // Stores full product objects for UI
+  const pendingUploadUrlsRef = useRef(new Map());
   const [form, setForm] = useState({
     title: '',
     handle: '',
@@ -104,9 +144,34 @@ const AdminProductForm = () => {
     variants: [],
     metafields: [],
     comboItems: '',
+    sizeChartImageUrl: '',
+    sizeChartText: '',
   });
 
   const optionList = useMemo(() => buildOptionList(form.options), [form.options]);
+  const sizeValues = useMemo(() => {
+    const sizeOption = form.options.find(
+      (option) => normalizeToken(option?.name) === 'size',
+    );
+    return sizeOption?.values || '';
+  }, [form.options]);
+  const bundleHandleSignature = useMemo(
+    () => bundleProducts.map((item) => item.handle).sort().join(','),
+    [bundleProducts],
+  );
+
+  useEffect(
+    () => () => {
+      pendingUploadUrlsRef.current.forEach((previewUrl) => {
+        if (previewUrl?.startsWith('blob:')) {
+          URL.revokeObjectURL(previewUrl);
+        }
+      });
+      pendingUploadUrlsRef.current.clear();
+    },
+    [],
+  );
+
   useEffect(() => {
     if (!token) return;
     adminFetchCollections(token, { limit: 200 })
@@ -121,17 +186,17 @@ const AdminProductForm = () => {
       .then((product) => {
         if (!product) return;
         const rawMetafields = Array.isArray(product.metafields) ? product.metafields : [];
-        const comboFields = rawMetafields.filter(
-          (field) =>
-            field?.namespace === 'custom' &&
-            (field?.key === 'combo_items' || field?.key === 'bundle_items'),
+        const comboFields = rawMetafields.filter((field) =>
+          isCustomMetafield(field, ['combo_items', 'bundle_items']),
         );
         const comboValues = comboFields.flatMap((field) => parseHandleList(field?.value));
+        const sizeChartImageUrl = readCustomMetafield(rawMetafields, ['size_chart_image']);
+        const sizeChartText = readCustomMetafield(rawMetafields, ['size_chart_text']);
         const filteredMetafields = rawMetafields.filter(
           (field) =>
             !(
-              field?.namespace === 'custom' &&
-              (field?.key === 'combo_items' || field?.key === 'bundle_items')
+              normalizeToken(field?.namespace) === 'custom' &&
+              RESERVED_CUSTOM_METAFIELD_KEYS.has(normalizeToken(field?.key))
             ),
         );
         setForm({
@@ -189,6 +254,8 @@ const AdminProductForm = () => {
             }))
             : [],
           comboItems: formatHandleList(comboValues),
+          sizeChartImageUrl,
+          sizeChartText,
         });
       })
       .catch((err) => setError(err?.message || 'Unable to load product.'))
@@ -203,9 +270,8 @@ const AdminProductForm = () => {
     }
     const handles = parseHandleList(form.comboItems);
     // Avoid re-fetching if we already have these exact products
-    const currentHandles = bundleProducts.map((p) => p.handle).sort().join(',');
-    const newHandles = handles.sort().join(',');
-    if (currentHandles === newHandles) return;
+    const newHandles = [...handles].sort().join(',');
+    if (bundleHandleSignature === newHandles) return;
 
     adminFetchProducts(token, { handles: handles.join(','), include: 'compact' })
       .then((payload) => {
@@ -213,7 +279,7 @@ const AdminProductForm = () => {
         setBundleProducts(items);
       })
       .catch((err) => console.error('Failed to load bundle details:', err));
-  }, [form.comboItems, token]);
+  }, [bundleHandleSignature, form.comboItems, token]);
 
   const handlePickerSelect = (selectedHandles) => {
     // 1. Update form value (comma-separated string)
@@ -236,12 +302,43 @@ const AdminProductForm = () => {
     setForm((prev) => ({ ...prev, [field]: value }));
   };
 
+  const handleSizeValuesChange = (value) => {
+    setForm((prev) => {
+      const index = prev.options.findIndex(
+        (option) => normalizeToken(option?.name) === 'size',
+      );
+      if (index === -1) {
+        if (!value.trim()) return prev;
+        return {
+          ...prev,
+          options: [...prev.options, { name: 'Size', values: value }],
+        };
+      }
+
+      return {
+        ...prev,
+        options: prev.options.map((option, idx) =>
+          idx === index ? { ...option, name: 'Size', values: value } : option,
+        ),
+      };
+    });
+  };
+
+  const addMediaByUrl = (url, alt = '') => {
+    const trimmedUrl = String(url || '').trim();
+    if (!trimmedUrl) return;
+    setForm((prev) => {
+      if (prev.media.some((item) => item.url === trimmedUrl)) return prev;
+      return {
+        ...prev,
+        media: [...prev.media, { url: trimmedUrl, alt, type: 'IMAGE' }],
+      };
+    });
+  };
+
   const handleAddImage = () => {
     if (!newImageUrl.trim()) return;
-    setForm((prev) => ({
-      ...prev,
-      media: [...prev.media, { url: newImageUrl.trim(), alt: '', type: 'IMAGE' }],
-    }));
+    addMediaByUrl(newImageUrl, '');
     setNewImageUrl('');
   };
 
@@ -252,21 +349,98 @@ const AdminProductForm = () => {
     }));
   };
 
-  const handleUpload = async (event) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
+  const removePendingUpload = (uploadId) => {
+    setPendingUploads((prev) => prev.filter((item) => item.id !== uploadId));
+    const previewUrl = pendingUploadUrlsRef.current.get(uploadId);
+    if (previewUrl?.startsWith('blob:')) {
+      URL.revokeObjectURL(previewUrl);
+    }
+    pendingUploadUrlsRef.current.delete(uploadId);
+  };
+
+  const uploadQueuedMediaFile = async (uploadItem) => {
+    if (!uploadItem?.file) return;
+    setPendingUploads((prev) =>
+      prev.map((item) =>
+        item.id === uploadItem.id
+          ? { ...item, status: 'uploading', error: '' }
+          : item,
+      ),
+    );
     try {
-      const result = await uploadImage(token, file);
-      if (result?.url) {
-        setForm((prev) => ({
-          ...prev,
-          media: [...prev.media, { url: result.url, alt: '', type: 'IMAGE' }],
-        }));
+      const result = await uploadImage(token, uploadItem.file);
+      if (!result?.url) {
+        throw new Error('Upload finished but no image URL was returned.');
       }
+      addMediaByUrl(result.url, '');
+      removePendingUpload(uploadItem.id);
     } catch (err) {
-      setError(err?.message || 'Image upload failed.');
+      setPendingUploads((prev) =>
+        prev.map((item) =>
+          item.id === uploadItem.id
+            ? { ...item, status: 'failed', error: err?.message || 'Upload failed.' }
+            : item,
+        ),
+      );
     }
   };
+
+  const handleUpload = async (event) => {
+    const files = Array.from(event.target.files || []).filter(Boolean);
+    event.target.value = '';
+    if (!files.length) return;
+    if (!token) {
+      setError('Admin session expired. Please log in again.');
+      return;
+    }
+
+    const queuedItems = files.map((file) => {
+      const id = createUploadId();
+      const previewUrl = URL.createObjectURL(file);
+      pendingUploadUrlsRef.current.set(id, previewUrl);
+      return {
+        id,
+        file,
+        name: file.name,
+        previewUrl,
+        status: 'uploading',
+        error: '',
+      };
+    });
+
+    setPendingUploads((prev) => [...queuedItems, ...prev]);
+    await Promise.all(queuedItems.map((item) => uploadQueuedMediaFile(item)));
+  };
+
+  const retryUpload = async (uploadId) => {
+    const target = pendingUploads.find((item) => item.id === uploadId);
+    if (!target) return;
+    await uploadQueuedMediaFile(target);
+  };
+
+  const handleSizeChartUpload = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    if (!token) {
+      setError('Admin session expired. Please log in again.');
+      return;
+    }
+
+    setSizeChartUploading(true);
+    try {
+      const result = await uploadImage(token, file);
+      if (!result?.url) {
+        throw new Error('Upload finished but no image URL was returned.');
+      }
+      handleFieldChange('sizeChartImageUrl', result.url);
+    } catch (err) {
+      setError(err?.message || 'Size chart upload failed.');
+    } finally {
+      setSizeChartUploading(false);
+    }
+  };
+
   const addOption = () => {
     setForm((prev) => ({
       ...prev,
@@ -430,6 +604,15 @@ const AdminProductForm = () => {
     setError('');
     setSaving(true);
 
+    const hasUploadingItems = pendingUploads.some(
+      (item) => item.status === 'uploading',
+    );
+    if (hasUploadingItems) {
+      setError('Please wait for image uploads to finish before saving.');
+      setSaving(false);
+      return;
+    }
+
     let metafields = form.metafields
       .filter((meta) => meta.namespace.trim() && meta.key.trim())
       .map((meta) => {
@@ -461,8 +644,8 @@ const AdminProductForm = () => {
     metafields = metafields.filter(
       (field) =>
         !(
-          field.namespace === 'custom' &&
-          (field.key === 'combo_items' || field.key === 'bundle_items')
+          normalizeToken(field.namespace) === 'custom' &&
+          RESERVED_CUSTOM_METAFIELD_KEYS.has(normalizeToken(field.key))
         ),
     );
 
@@ -479,6 +662,28 @@ const AdminProductForm = () => {
       });
     }
 
+    const sizeChartImageUrl = form.sizeChartImageUrl.trim();
+    if (sizeChartImageUrl) {
+      metafields.push({
+        set: 'PRODUCT',
+        namespace: 'custom',
+        key: 'size_chart_image',
+        type: 'single_line_text_field',
+        value: sizeChartImageUrl,
+      });
+    }
+
+    const sizeChartText = form.sizeChartText.trim();
+    if (sizeChartText) {
+      metafields.push({
+        set: 'PRODUCT',
+        namespace: 'custom',
+        key: 'size_chart_text',
+        type: 'multi_line_text_field',
+        value: sizeChartText,
+      });
+    }
+
     const payload = {
       title: form.title.trim(),
       handle: form.handle.trim() || slugify(form.title),
@@ -490,11 +695,13 @@ const AdminProductForm = () => {
       descriptionHtml: form.descriptionHtml.trim() || undefined,
       tags: normalizeStringArray(form.tags),
       collections: form.collectionIds,
-      media: form.media.map((media) => ({
-        url: media.url,
-        alt: media.alt || undefined,
-        type: media.type || 'IMAGE',
-      })),
+      media: form.media
+        .filter((media) => String(media?.url || '').trim())
+        .map((media) => ({
+          url: media.url,
+          alt: media.alt || undefined,
+          type: media.type || 'IMAGE',
+        })),
       options: form.options.length ? optionList : [],
       variants: form.variants.map((variant) => ({
         optionValues: variant.optionValues || undefined,
@@ -772,10 +979,19 @@ const AdminProductForm = () => {
               <div className="flex items-center justify-between">
                 <p className="text-sm font-semibold text-white">Media</p>
                 <label className="text-xs text-emerald-300 cursor-pointer">
-                  Upload
-                  <input type="file" accept="image/*" onChange={handleUpload} className="hidden" />
+                  Upload images
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={handleUpload}
+                    className="hidden"
+                  />
                 </label>
               </div>
+              <p className="text-[11px] text-slate-500">
+                Select multiple images at once. Upload starts immediately with preview.
+              </p>
               <div className="flex gap-2">
                 <input
                   type="text"
@@ -810,9 +1026,129 @@ const AdminProductForm = () => {
                     </button>
                   </div>
                 ))}
-                {form.media.length === 0 ? (
+                {pendingUploads.map((item) => (
+                  <div
+                    key={item.id}
+                    className="rounded-lg border border-slate-700/70 bg-slate-950 p-2"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="h-12 w-12 rounded-lg bg-slate-800 overflow-hidden">
+                        {item.previewUrl ? (
+                          <img
+                            src={item.previewUrl}
+                            alt={item.name}
+                            className="h-full w-full object-cover"
+                          />
+                        ) : null}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-xs text-slate-300">{item.name}</p>
+                        <p
+                          className={`text-[11px] ${
+                            item.status === 'failed'
+                              ? 'text-rose-300'
+                              : 'text-amber-300'
+                          }`}
+                        >
+                          {item.status === 'failed'
+                            ? item.error || 'Upload failed'
+                            : 'Uploading...'}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {item.status === 'failed' ? (
+                          <button
+                            type="button"
+                            onClick={() => retryUpload(item.id)}
+                            className="rounded border border-emerald-500/30 px-2 py-1 text-[11px] text-emerald-300 hover:bg-emerald-500/10"
+                          >
+                            Retry
+                          </button>
+                        ) : null}
+                        <button
+                          type="button"
+                          onClick={() => removePendingUpload(item.id)}
+                          className="rounded border border-slate-700 px-2 py-1 text-[11px] text-slate-300 hover:bg-slate-800"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                {form.media.length === 0 && pendingUploads.length === 0 ? (
                   <p className="text-xs text-slate-500">No media added yet.</p>
                 ) : null}
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-slate-800 bg-slate-900 p-4 space-y-3">
+              <div>
+                <p className="text-sm font-semibold text-white">Size Guide</p>
+                <p className="text-xs text-slate-400">
+                  Manage size values and optional size chart details.
+                </p>
+              </div>
+
+              <div>
+                <label className="text-xs uppercase tracking-[0.2em] text-slate-400">
+                  Size Values
+                </label>
+                <input
+                  type="text"
+                  value={sizeValues}
+                  onChange={(event) => handleSizeValuesChange(event.target.value)}
+                  className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white focus:border-emerald-400 focus:outline-none"
+                  placeholder="XS, S, M, L, XL"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs uppercase tracking-[0.2em] text-slate-400">
+                  Size Chart Image URL
+                </label>
+                <div className="mt-2 flex gap-2">
+                  <input
+                    type="text"
+                    value={form.sizeChartImageUrl}
+                    onChange={(event) =>
+                      handleFieldChange('sizeChartImageUrl', event.target.value)
+                    }
+                    className="flex-1 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white focus:border-emerald-400 focus:outline-none"
+                    placeholder="https://..."
+                  />
+                  <label className="rounded-lg border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-200 hover:bg-slate-800 cursor-pointer">
+                    {sizeChartUploading ? 'Uploading...' : 'Upload'}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleSizeChartUpload}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
+              </div>
+
+              {form.sizeChartImageUrl ? (
+                <div className="overflow-hidden rounded-lg border border-slate-800 bg-slate-950 p-2">
+                  <img
+                    src={form.sizeChartImageUrl}
+                    alt="Size chart"
+                    className="max-h-56 w-full object-contain"
+                  />
+                </div>
+              ) : null}
+
+              <div>
+                <label className="text-xs uppercase tracking-[0.2em] text-slate-400">
+                  Size Chart Notes
+                </label>
+                <textarea
+                  value={form.sizeChartText}
+                  onChange={(event) => handleFieldChange('sizeChartText', event.target.value)}
+                  className="mt-2 min-h-[100px] w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white focus:border-emerald-400 focus:outline-none"
+                  placeholder="Add measurements, fit notes, or instructions."
+                />
               </div>
             </div>
           </div>
@@ -1089,7 +1425,7 @@ const AdminProductForm = () => {
           </button>
           <button
             type="submit"
-            disabled={saving || loading}
+            disabled={saving || loading || pendingUploads.some((item) => item.status === 'uploading')}
             className="rounded-lg bg-emerald-400 px-6 py-2 text-sm font-semibold text-slate-950 hover:bg-emerald-300 transition disabled:opacity-60"
           >
             {saving ? 'Saving...' : isNew ? 'Create Product' : 'Save Changes'}
