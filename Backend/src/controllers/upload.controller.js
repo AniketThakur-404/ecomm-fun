@@ -5,8 +5,12 @@ const { sendSuccess, sendError } = require('../utils/response');
 const uploadsDir = path.join(__dirname, '../../uploads');
 
 function ensureUploadsDir() {
-  if (!fs.existsSync(uploadsDir)) {
-    fs.mkdirSync(uploadsDir, { recursive: true });
+  try {
+    if (!fs.existsSync(uploadsDir)) {
+      fs.mkdirSync(uploadsDir, { recursive: true });
+    }
+  } catch {
+    // Vercel serverless: filesystem is read-only, skip silently
   }
 }
 
