@@ -8,6 +8,7 @@ import {
   uploadImage,
 } from '../../lib/api';
 import { useAdminAuth } from '../../contexts/admin-auth-context';
+import ProductPicker from '../../components/admin/ProductPicker';
 
 const slugify = (value) =>
   value
@@ -37,7 +38,7 @@ const parseHandleList = (value) => {
     if (Array.isArray(parsed)) {
       return parsed.map((item) => String(item).trim()).filter(Boolean);
     }
-  } catch {}
+  } catch { }
   return normalizeStringArray(raw.replace(/\|/g, ','));
 };
 
@@ -53,7 +54,7 @@ const formatHandleList = (value) => {
     if (Array.isArray(parsed)) {
       return parsed.map((item) => String(item).trim()).filter(Boolean).join(', ');
     }
-  } catch {}
+  } catch { }
   return raw;
 };
 
@@ -85,6 +86,8 @@ const AdminProductForm = () => {
   const [error, setError] = useState('');
   const [collections, setCollections] = useState([]);
   const [newImageUrl, setNewImageUrl] = useState('');
+  const [showPicker, setShowPicker] = useState(false);
+  const [bundleProducts, setBundleProducts] = useState([]); // Stores full product objects for UI
   const [form, setForm] = useState({
     title: '',
     handle: '',
@@ -146,44 +149,44 @@ const AdminProductForm = () => {
             : [],
           media: Array.isArray(product.media)
             ? product.media.map((media) => ({
-                url: media.url,
-                alt: media.alt || '',
-                type: media.type || 'IMAGE',
-              }))
+              url: media.url,
+              alt: media.alt || '',
+              type: media.type || 'IMAGE',
+            }))
             : [],
           options: Array.isArray(product.options)
             ? product.options.map((option) => ({
-                name: option.name || '',
-                values: Array.isArray(option.values) ? option.values.join(', ') : '',
-              }))
+              name: option.name || '',
+              values: Array.isArray(option.values) ? option.values.join(', ') : '',
+            }))
             : [],
           variants: Array.isArray(product.variants)
             ? product.variants.map((variant) => ({
-                id: variant.id,
-                optionValues: variant.optionValues || {},
-                sku: variant.sku || '',
-                price: variant.price ?? '',
-                compareAtPrice: variant.compareAtPrice ?? '',
-                inventory: Array.isArray(variant.inventoryLevels)
-                  ? variant.inventoryLevels.reduce(
-                      (sum, level) => sum + (Number(level.available) || 0),
-                      0,
-                    )
-                  : 0,
-                barcode: variant.barcode || '',
-                trackInventory: variant.trackInventory ?? true,
-                taxable: variant.taxable ?? true,
-                inventoryPolicy: variant.inventoryPolicy || 'DENY',
-              }))
+              id: variant.id,
+              optionValues: variant.optionValues || {},
+              sku: variant.sku || '',
+              price: variant.price ?? '',
+              compareAtPrice: variant.compareAtPrice ?? '',
+              inventory: Array.isArray(variant.inventoryLevels)
+                ? variant.inventoryLevels.reduce(
+                  (sum, level) => sum + (Number(level.available) || 0),
+                  0,
+                )
+                : 0,
+              barcode: variant.barcode || '',
+              trackInventory: variant.trackInventory ?? true,
+              taxable: variant.taxable ?? true,
+              inventoryPolicy: variant.inventoryPolicy || 'DENY',
+            }))
             : [],
           metafields: Array.isArray(filteredMetafields)
             ? filteredMetafields.map((field) => ({
-                set: field.set || 'PRODUCT',
-                namespace: field.namespace || '',
-                key: field.key || '',
-                type: field.type || 'single_line_text_field',
-                value: typeof field.value === 'string' ? field.value : JSON.stringify(field.value),
-              }))
+              set: field.set || 'PRODUCT',
+              namespace: field.namespace || '',
+              key: field.key || '',
+              type: field.type || 'single_line_text_field',
+              value: typeof field.value === 'string' ? field.value : JSON.stringify(field.value),
+            }))
             : [],
           comboItems: formatHandleList(comboValues),
         });
@@ -191,6 +194,43 @@ const AdminProductForm = () => {
       .catch((err) => setError(err?.message || 'Unable to load product.'))
       .finally(() => setLoading(false));
   }, [id, isNew]);
+
+  // Load bundle product details when form.comboItems changes (initial load)
+  useEffect(() => {
+    if (!form.comboItems || !token) {
+      if (!form.comboItems) setBundleProducts([]);
+      return;
+    }
+    const handles = parseHandleList(form.comboItems);
+    // Avoid re-fetching if we already have these exact products
+    const currentHandles = bundleProducts.map((p) => p.handle).sort().join(',');
+    const newHandles = handles.sort().join(',');
+    if (currentHandles === newHandles) return;
+
+    adminFetchProducts(token, { handles: handles.join(','), include: 'compact' })
+      .then((payload) => {
+        const items = payload?.data ?? payload ?? [];
+        setBundleProducts(items);
+      })
+      .catch((err) => console.error('Failed to load bundle details:', err));
+  }, [form.comboItems, token]);
+
+  const handlePickerSelect = (selectedHandles) => {
+    // 1. Update form value (comma-separated string)
+    const newValue = selectedHandles.join(', ');
+    handleFieldChange('comboItems', newValue);
+
+    // 2. Fetch details for any NEW handles we don't have yet
+    // (Existing ones we can keep to avoid flicker, or just re-fetch all for simplicity)
+    // For simplicity and correctness, let the useEffect above handle the fetching
+    // based on the updated form value.
+  };
+
+  const handleRemoveBundleItem = (handleToRemove) => {
+    const currentHandles = parseHandleList(form.comboItems);
+    const newHandles = currentHandles.filter((h) => h !== handleToRemove);
+    handleFieldChange('comboItems', newHandles.join(', '));
+  };
 
   const handleFieldChange = (field, value) => {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -633,22 +673,89 @@ const AdminProductForm = () => {
               </select>
             </div>
 
-            <div className="rounded-xl border border-slate-800 bg-slate-900 p-4 space-y-2">
-              <div>
-                <p className="text-sm font-semibold text-white">Bundle Items</p>
-                <p className="text-xs text-slate-400">
-                  Enter product handles to show bundle selections on the product page.
-                </p>
+            <div className="rounded-xl border border-slate-800 bg-slate-900 p-4 space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-white">Bundle / Combo Items</p>
+                  <p className="text-xs text-slate-400">
+                    Select products to display as a bundle with this item.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowPicker(true)}
+                  className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-xs font-semibold text-emerald-400 hover:bg-emerald-500/20"
+                >
+                  Browse Products
+                </button>
               </div>
-              <textarea
-                value={form.comboItems}
-                onChange={(event) => handleFieldChange('comboItems', event.target.value)}
-                className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white focus:border-emerald-400 focus:outline-none min-h-[70px]"
-                placeholder="classic-office-shirt, slim-fit-trousers, formal-leather-shoes"
-              />
-              <p className="text-xs text-slate-500">Comma-separated handles. Leave blank for non-combo products.</p>
+
+              {/* Visual List of Selected Bundle Items */}
+              <div className="space-y-2">
+                {bundleProducts.length === 0 ? (
+                  <p className="text-xs text-slate-500 italic">No bundle items selected.</p>
+                ) : (
+                  bundleProducts.map((prod) => (
+                    <div
+                      key={prod.handle}
+                      className="flex items-center gap-3 rounded-lg border border-slate-800 bg-slate-950 p-2"
+                    >
+                      <div className="h-8 w-8 shrink-0 overflow-hidden rounded bg-slate-800">
+                        {prod.media?.[0]?.url ? (
+                          <img
+                            src={prod.media[0].url}
+                            alt=""
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center text-[10px] text-slate-500">
+                            Img
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="truncate text-xs font-medium text-slate-200">
+                          {prod.title}
+                        </p>
+                        <p className="truncate text-[10px] text-slate-500">{prod.handle}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveBundleItem(prod.handle)}
+                        className="p-1 text-slate-500 hover:text-rose-400"
+                      >
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <line x1="18" y1="6" x2="6" y2="18"></line>
+                          <line x1="6" y1="6" x2="18" y2="18"></line>
+                        </svg>
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {/* Hidden input to maintain compatibility with existing submit logic */}
+              <input type="hidden" name="comboItems" value={form.comboItems} />
             </div>
           </div>
+
+          {/* Product Picker Modal */}
+          <ProductPicker
+            isOpen={showPicker}
+            onClose={() => setShowPicker(false)}
+            selectedHandles={bundleProducts.map((p) => p.handle)}
+            onSelect={handlePickerSelect}
+          />
 
           <div className="space-y-4">
             <div>
