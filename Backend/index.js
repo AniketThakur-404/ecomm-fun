@@ -51,11 +51,11 @@ const vercelProjectName =
 const vercelOriginRegex =
   allowVercelPreview && vercelProjectName
     ? new RegExp(
-        `^https://${escapeRegex(
-          vercelProjectName,
-        )}(?:-[a-z0-9-]+)?\\.vercel\\.app$`,
-        'i',
-      )
+      `^https://${escapeRegex(
+        vercelProjectName,
+      )}(?:-[a-z0-9-]+)?\\.vercel\\.app$`,
+      'i',
+    )
     : null;
 
 const isLocalDevOrigin = (origin = '') => {
@@ -112,9 +112,12 @@ app.use((err, req, res, next) => {
 
 app.use((_req, res) => res.status(404).json({ error: 'Not Found' }));
 
+const { warmUp } = require('./src/db/prismaClient');
+
 if (env.nodeEnv !== 'production') {
   app.listen(env.port, () => {
     console.log(`Marvelle API ready on http://localhost:${env.port}`);
+    warmUp();
   });
 }
 

@@ -38,7 +38,8 @@ export const CatalogProvider = ({ children, productLimit = DEFAULT_PRODUCT_LIMIT
     let cancelled = false;
 
     async function loadCatalogue() {
-      console.log('Initializing CatalogContext...');
+      const _catStart = performance.now();
+      console.log('%c[Catalog] ⏳ Initializing CatalogContext...', 'color:#8b5cf6;font-weight:bold');
       setState((prev) => ({
         ...prev,
         status: prev.status === 'ready' ? prev.status : 'loading',
@@ -46,54 +47,33 @@ export const CatalogProvider = ({ children, productLimit = DEFAULT_PRODUCT_LIMIT
         error: null,
       }));
 
+      // ── Step 1: Load products FIRST (this is what the homepage needs) ──
       try {
-        const [productsResult, collectionsResult] = await Promise.allSettled([
-          fetchAllProducts(productLimit),
-          fetchCollections(16),
-        ]);
-
+        const productsData = await fetchAllProducts(productLimit);
         if (cancelled) return;
 
-        const productsData =
-          productsResult.status === 'fulfilled' && Array.isArray(productsResult.value)
-            ? productsResult.value
-            : [];
-        const collectionsData =
-          collectionsResult.status === 'fulfilled' && Array.isArray(collectionsResult.value)
-            ? collectionsResult.value
-            : [];
-
-        const errors = [productsResult, collectionsResult]
-          .filter((result) => result.status === 'rejected')
-          .map((result) => result.reason);
-
-        if (errors.length) {
-          console.error('Partial catalogue load failure', errors);
-        }
-
+        const validProducts = Array.isArray(productsData) ? productsData : [];
         const productByHandle = {};
-        productsData.forEach((product) => {
-          if (product?.handle) {
-            productByHandle[product.handle] = product;
-          }
+        validProducts.forEach((product) => {
+          if (product?.handle) productByHandle[product.handle] = product;
         });
+        const productCards = validProducts.map(toProductCard).filter(Boolean);
 
-        const productCards = productsData
-          .map(toProductCard)
-          .filter(Boolean);
+        const _prodDur = (performance.now() - _catStart).toFixed(0);
+        console.log(`%c[Catalog] ✅ Products ready in ${_prodDur}ms`, 'color:#22c55e;font-weight:bold', { count: validProducts.length });
 
-        console.log('Catalog loaded:', { products: productsData.length, collections: collectionsData.length });
-        setState({
-          status: productsData.length || collectionsData.length ? 'ready' : 'error',
+        // Set state to 'ready' immediately — homepage can now render products
+        setState((prev) => ({
+          ...prev,
+          status: 'ready',
           loading: false,
-          error: errors[0] ?? null,
-          products: productsData,
+          products: validProducts,
           productByHandle,
           productCards,
-          collections: collectionsData.filter(Boolean),
-        });
+        }));
       } catch (error) {
-        console.error('Failed to load catalogue', error);
+        const _prodDur = (performance.now() - _catStart).toFixed(0);
+        console.error(`%c[Catalog] ❌ Products failed after ${_prodDur}ms`, 'color:#ef4444;font-weight:bold', error);
         if (cancelled) return;
         setState((prev) => ({
           ...prev,
@@ -101,6 +81,21 @@ export const CatalogProvider = ({ children, productLimit = DEFAULT_PRODUCT_LIMIT
           loading: false,
           error,
         }));
+      }
+
+      // ── Step 2: Load collections in background (non-blocking) ──
+      try {
+        const collectionsData = await fetchCollections(16);
+        if (cancelled) return;
+        const validCollections = Array.isArray(collectionsData) ? collectionsData.filter(Boolean) : [];
+        const _colDur = (performance.now() - _catStart).toFixed(0);
+        console.log(`%c[Catalog] ✅ Collections loaded in ${_colDur}ms`, 'color:#22c55e;font-weight:bold', { count: validCollections.length });
+        setState((prev) => ({
+          ...prev,
+          collections: validCollections,
+        }));
+      } catch (error) {
+        console.warn('[Catalog] Collections failed (non-critical):', error.message);
       }
     }
 
@@ -123,10 +118,15 @@ export const CatalogProvider = ({ children, productLimit = DEFAULT_PRODUCT_LIMIT
     async (handle, { limit = 24 } = {}) => {
       if (!handle) return [];
       if (collectionCache[handle]) {
+        console.log(`%c[Catalog] ✅ Collection cache HIT %c"${handle}" (${collectionCache[handle].length} products)`, 'color:#22c55e;font-weight:bold', 'color:#6b7280');
         return collectionCache[handle];
       }
+      const _colStart = performance.now();
+      console.log(`%c[Catalog] ⏳ Fetching collection %c"${handle}"`, 'color:#3b82f6;font-weight:bold', 'color:#6b7280');
       const collection = await fetchCollectionByHandle(handle, limit);
       const products = collection?.products ?? [];
+      const _colDur = (performance.now() - _colStart).toFixed(0);
+      console.log(`%c[Catalog] ✅ Collection %c"${handle}" %c→ ${products.length} products in ${_colDur}ms`, 'color:#22c55e;font-weight:bold', 'color:#6b7280', _colDur > 1000 ? 'color:#ef4444;font-weight:bold' : 'color:#f59e0b;font-weight:bold');
       setCollectionCache((prev) => ({
         ...prev,
         [handle]: products,

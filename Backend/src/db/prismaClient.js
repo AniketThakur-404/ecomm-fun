@@ -40,6 +40,17 @@ const ensurePrisma = () => {
 
 const getPrisma = async () => ensurePrisma();
 
+const warmUp = async () => {
+  try {
+    const start = Date.now();
+    const client = ensurePrisma();
+    await client.$queryRawUnsafe('SELECT 1');
+    console.log(`[DB] ✅ Prisma warm-up done in ${Date.now() - start}ms`);
+  } catch (err) {
+    console.warn('[DB] ⚠️ Prisma warm-up failed (will retry on first request):', err.message);
+  }
+};
+
 const disconnect = async () => {
   if (!prisma) return;
   await prisma.$disconnect();
@@ -48,4 +59,5 @@ const disconnect = async () => {
 module.exports = {
   getPrisma,
   disconnect,
+  warmUp,
 };

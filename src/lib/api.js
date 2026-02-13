@@ -130,6 +130,7 @@ const request = async (path, { method = 'GET', headers = {}, body } = {}) => {
   if (cacheKey && !options.headers.Authorization) {
     const cached = responseCache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) {
+      console.log(`%c[API] ✅ CACHE HIT %c${methodUpper} ${url}`, 'color:#22c55e;font-weight:bold', 'color:#6b7280');
       return cached.payload;
     }
     if (cached) responseCache.delete(cacheKey);
@@ -139,9 +140,14 @@ const request = async (path, { method = 'GET', headers = {}, body } = {}) => {
     return inflightRequests.get(cacheKey);
   }
 
+  const _reqStart = performance.now();
+  console.log(`%c[API] ⏳ START  %c${methodUpper} ${url}`, 'color:#3b82f6;font-weight:bold', 'color:#6b7280');
+
   const pending = fetch(url, options)
     .then(parseResponse)
     .then((payload) => {
+      const _dur = (performance.now() - _reqStart).toFixed(0);
+      console.log(`%c[API] ✅ DONE   %c${methodUpper} ${url} %c(${_dur}ms)`, 'color:#22c55e;font-weight:bold', 'color:#6b7280', _dur > 1000 ? 'color:#ef4444;font-weight:bold' : 'color:#f59e0b;font-weight:bold');
       if (cacheKey && !options.headers.Authorization) {
         responseCache.set(cacheKey, {
           payload: Promise.resolve(payload),
@@ -149,6 +155,11 @@ const request = async (path, { method = 'GET', headers = {}, body } = {}) => {
         });
       }
       return payload;
+    })
+    .catch((err) => {
+      const _dur = (performance.now() - _reqStart).toFixed(0);
+      console.log(`%c[API] ❌ FAIL   %c${methodUpper} ${url} %c(${_dur}ms) %c${err.message}`, 'color:#ef4444;font-weight:bold', 'color:#6b7280', 'color:#ef4444', 'color:#ef4444');
+      throw err;
     })
     .finally(() => {
       if (cacheKey) inflightRequests.delete(cacheKey);

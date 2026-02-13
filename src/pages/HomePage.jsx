@@ -52,6 +52,8 @@ export default function HomePage() {
     let cancelled = false;
 
     async function loadPrimary() {
+      const _t0 = performance.now();
+      console.log('%c[HomePage] ⏳ Loading "Latest Drop" section...', 'color:#ec4899;font-weight:bold');
       setLatestLoading(true);
       if (!PRIMARY_HANDLE) {
         setLatestProducts(fallbackLatest);
@@ -73,6 +75,8 @@ export default function HomePage() {
         }
       } finally {
         if (!cancelled) {
+          const _dur = (performance.now() - _t0).toFixed(0);
+          console.log(`%c[HomePage] ✅ "Latest Drop" ready in ${_dur}ms`, _dur > 2000 ? 'color:#ef4444;font-weight:bold' : 'color:#22c55e;font-weight:bold');
           setLatestLoading(false);
         }
       }
@@ -89,6 +93,8 @@ export default function HomePage() {
     let cancelled = false;
 
     async function loadSecondary() {
+      const _t0 = performance.now();
+      console.log('%c[HomePage] ⏳ Loading "More From ARADHYA" section...', 'color:#ec4899;font-weight:bold');
       setMoreLoading(true);
       if (!SECONDARY_HANDLE) {
         setMoreProducts(fallbackMore);
@@ -110,6 +116,8 @@ export default function HomePage() {
         }
       } finally {
         if (!cancelled) {
+          const _dur = (performance.now() - _t0).toFixed(0);
+          console.log(`%c[HomePage] ✅ "More From ARADHYA" ready in ${_dur}ms`, _dur > 2000 ? 'color:#ef4444;font-weight:bold' : 'color:#22c55e;font-weight:bold');
           setMoreLoading(false);
         }
       }

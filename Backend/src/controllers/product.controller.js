@@ -547,7 +547,7 @@ const buildVariantTitle = (variant, optionOrder) => {
 };
 /* ── Lightweight in-memory cache for public product lists ── */
 const productListCache = new Map();
-const PRODUCT_CACHE_TTL = 60_000; // 60 seconds
+const PRODUCT_CACHE_TTL = 300_000; // 5 minutes
 const PRODUCT_CACHE_MAX = 50;
 
 const getCachedOrFetch = async (cacheKey, fetcher) => {

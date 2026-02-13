@@ -112,8 +112,13 @@ const resolveParentId = async (prisma, payload) => {
   return parent?.id ?? null;
 };
 
+/* ── In-memory cache for public collection lists ── */
+const collectionListCache = new Map();
+const COLLECTION_CACHE_TTL = 300_000; // 5 minutes
+
 exports.listCollections = async (req, res, next) => {
   try {
+    const _start = Date.now();
     const prisma = await getPrisma();
     const page = Math.max(Number.parseInt(req.query?.page, 10) || 1, 1);
     const limit = Number.parseInt(req.query?.limit, 10);
@@ -124,18 +129,27 @@ exports.listCollections = async (req, res, next) => {
     const includeOptions =
       includeMode === 'full' ? { include: collectionInclude } : { select: collectionListSelect };
 
-    const [collections, total] = await Promise.all([
-      prisma.collection.findMany({
+    const cacheKey = `collections:${JSON.stringify({ take, skip, includeMode })}`;
+    const cached = collectionListCache.get(cacheKey);
+    let collections;
+
+    if (cached && cached.expiresAt > Date.now()) {
+      collections = cached.value;
+      console.log(`[API] listCollections: ${collections.length} items from CACHE in ${Date.now() - _start}ms`);
+    } else {
+      if (cached) collectionListCache.delete(cacheKey);
+      collections = await prisma.collection.findMany({
         orderBy: { title: 'asc' },
         ...includeOptions,
         take,
         skip,
-      }),
-      prisma.collection.count(),
-    ]);
+      });
+      collectionListCache.set(cacheKey, { value: collections, expiresAt: Date.now() + COLLECTION_CACHE_TTL });
+      console.log(`[API] listCollections: ${collections.length} items from DB in ${Date.now() - _start}ms`);
+    }
 
     res.set('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=600');
-    return sendSuccess(res, collections, { total, page, limit: take });
+    return sendSuccess(res, collections, { page, limit: take });
   } catch (error) {
     return next(error);
   }
