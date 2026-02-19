@@ -18,6 +18,9 @@ const loadApp = () => {
 
 export const config = {
   runtime: 'nodejs',
+  api: {
+    bodyParser: false,
+  },
 };
 
 export default function handler(req, res) {

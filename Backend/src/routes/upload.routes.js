@@ -1,12 +1,9 @@
 const express = require('express');
 const multer = require('multer');
-const path = require('node:path');
-const crypto = require('node:crypto');
 
 const { uploadSuccess, deleteUpload } = require('../controllers/upload.controller');
 const { protect, requireRole } = require('../middleware/auth');
 const { sendError } = require('../utils/response');
-const { getUploadsDir } = require('../utils/uploads');
 
 const router = express.Router();
 
@@ -20,30 +17,8 @@ const ALLOWED_IMAGE_TYPES = new Set([
   'image/svg+xml',
 ]);
 
-const safeBaseName = (filename) => {
-  const ext = path.extname(filename);
-  const base = path.basename(filename, ext);
-  const cleaned = base
-    .replace(/[^a-zA-Z0-9_-]+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-+|-+$/g, '');
-  return cleaned || 'image';
-};
-
-const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => {
-    cb(null, getUploadsDir());
-  },
-  filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    const name = safeBaseName(file.originalname);
-    const unique = crypto.randomUUID();
-    cb(null, `${name}-${unique}${ext}`);
-  },
-});
-
 const upload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   limits: {
     fileSize: 10 * 1024 * 1024,
   },

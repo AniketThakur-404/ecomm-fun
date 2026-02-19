@@ -17,7 +17,6 @@ const uploadRoutes = require('./src/routes/upload.routes');
 const reviewRoutes = require('./src/routes/review.routes');
 const orderRoutes = require('./src/routes/order.routes');
 const shiprocketRoutes = require('./src/routes/shiprocket.routes');
-const { getUploadsDir } = require('./src/utils/uploads');
 
 const app = express();
 
@@ -91,7 +90,6 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.use(compression());
 app.use(express.json({ limit: '1mb' }));
-app.use('/uploads', express.static(getUploadsDir()));
 
 app.get('/', (_req, res) => {
   res.status(200).json({ message: 'Marvelle API is running successfully.' });

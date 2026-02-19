@@ -1,39 +1,54 @@
-const fs = require('node:fs');
-const path = require('node:path');
-
 const { sendSuccess, sendError } = require('../utils/response');
-const { getUploadsDir } = require('../utils/uploads');
+const { uploadBuffer, deleteImage, publicIdFromUrl } = require('../utils/cloudinary');
 
-const getUploadUrl = (req, filename) => {
-  const baseUrl = `${req.protocol}://${req.get('host')}`;
-  return `${baseUrl}/uploads/${filename}`;
-};
-
-const uploadSuccess = (req, res) => {
+const uploadSuccess = async (req, res) => {
   if (!req.file) {
     return sendError(res, 400, 'No file uploaded');
   }
 
-  const fileUrl = getUploadUrl(req, req.file.filename);
-  res.status(201);
-  return sendSuccess(res, {
-    url: fileUrl,
-    filename: req.file.filename,
-    originalName: req.file.originalname,
-    size: req.file.size,
-  });
+  try {
+    const result = await uploadBuffer(req.file.buffer, {
+      public_id: req.file.originalname
+        .replace(/\.[^.]+$/, '')
+        .replace(/[^a-zA-Z0-9_-]+/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-+|-+$/g, '') || 'image',
+    });
+
+    res.status(201);
+    return sendSuccess(res, {
+      url: result.url,
+      publicId: result.publicId,
+      originalName: req.file.originalname,
+      size: req.file.size,
+      width: result.width,
+      height: result.height,
+    });
+  } catch (err) {
+    console.error('[Upload] Cloudinary upload failed:', err);
+    return sendError(res, 500, 'Image upload failed. Please try again.');
+  }
 };
 
-const deleteUpload = (req, res) => {
-  const filename = req.params.filename;
-  const uploadsDir = getUploadsDir();
-  const filepath = path.join(uploadsDir, filename);
-  if (!fs.existsSync(filepath)) {
-    return sendError(res, 404, 'File not found');
+const deleteUpload = async (req, res) => {
+  const identifier = req.params.filename;
+
+  // Support both public_id and full URL
+  const publicId = identifier.startsWith('http')
+    ? publicIdFromUrl(identifier)
+    : identifier;
+
+  if (!publicId) {
+    return sendError(res, 400, 'Invalid image identifier');
   }
 
-  fs.unlinkSync(filepath);
-  return res.status(204).send();
+  try {
+    await deleteImage(publicId);
+    return res.status(204).send();
+  } catch (err) {
+    console.error('[Upload] Cloudinary delete failed:', err);
+    return sendError(res, 500, 'Failed to delete image.');
+  }
 };
 
 module.exports = {
