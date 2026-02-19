@@ -975,11 +975,21 @@ const AdminProductForm = () => {
               />
             </div>
 
-            <div className="rounded-xl border border-slate-800 bg-slate-900 p-4 space-y-3">
+            <div className="rounded-xl border border-slate-800 bg-slate-900/80 backdrop-blur-xl p-5 space-y-4">
+              {/* Header */}
               <div className="flex items-center justify-between">
-                <p className="text-sm font-semibold text-white">Media</p>
-                <label className="text-xs text-emerald-300 cursor-pointer">
-                  Upload images
+                <div className="flex items-center gap-2.5">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-500/20 to-teal-500/20 border border-emerald-500/20">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-400"><rect width="18" height="18" x="3" y="3" rx="2" ry="2" /><circle cx="9" cy="9" r="2" /><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" /></svg>
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-white">Media Gallery</p>
+                    <p className="text-[11px] text-slate-500">Drag to reorder · Click to preview</p>
+                  </div>
+                </div>
+                <label className="group flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-emerald-500/10 to-teal-500/10 border border-emerald-500/25 px-3 py-1.5 text-xs font-semibold text-emerald-400 cursor-pointer hover:from-emerald-500/20 hover:to-teal-500/20 transition-all duration-300">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="group-hover:scale-110 transition-transform"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" x2="12" y1="3" y2="15" /></svg>
+                  Upload
                   <input
                     type="file"
                     accept="image/*"
@@ -989,111 +999,239 @@ const AdminProductForm = () => {
                   />
                 </label>
               </div>
-              <p className="text-[11px] text-slate-500">
-                Select multiple images at once. Upload starts immediately with preview.
-              </p>
+
+              {/* URL Input */}
               <div className="flex gap-2">
                 <input
                   type="text"
                   value={newImageUrl}
                   onChange={(event) => setNewImageUrl(event.target.value)}
-                  className="flex-1 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white focus:border-emerald-400 focus:outline-none"
-                  placeholder="Paste image URL"
+                  onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); handleAddImage(); } }}
+                  className="flex-1 rounded-lg border border-slate-700/60 bg-slate-950/60 backdrop-blur-sm px-3 py-2 text-xs text-white placeholder:text-slate-600 focus:border-emerald-400/60 focus:ring-1 focus:ring-emerald-400/20 focus:outline-none transition-all"
+                  placeholder="Paste image URL and press Enter"
                 />
                 <button
                   type="button"
                   onClick={handleAddImage}
-                  className="rounded-lg border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-200 hover:bg-slate-800"
+                  className="rounded-lg border border-slate-700/60 bg-slate-800/50 px-4 py-2 text-xs font-semibold text-slate-200 hover:bg-slate-700/50 hover:border-slate-600 transition-all duration-200"
                 >
                   Add
                 </button>
               </div>
-              <div className="grid gap-3">
+
+              {/* Image Grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                 {form.media.map((media, index) => (
                   <div
-                    key={`${media.url}-${index}`}
-                    className="rounded-lg border border-slate-700/70 bg-slate-950 p-2"
+                    key={`media-${media.url}-${index}`}
+                    draggable
+                    onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(index)); e.currentTarget.style.opacity = '0.4'; }}
+                    onDragEnd={(e) => { e.currentTarget.style.opacity = '1'; }}
+                    onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      const fromIndex = parseInt(e.dataTransfer.getData('text/plain'), 10);
+                      if (isNaN(fromIndex) || fromIndex === index) return;
+                      setForm((prev) => {
+                        const updated = [...prev.media];
+                        const [moved] = updated.splice(fromIndex, 1);
+                        updated.splice(index, 0, moved);
+                        return { ...prev, media: updated };
+                      });
+                    }}
+                    className="group relative aspect-square rounded-xl border border-slate-700/50 bg-slate-950/50 backdrop-blur-sm overflow-hidden cursor-grab active:cursor-grabbing transition-all duration-300 hover:border-emerald-500/30 hover:shadow-[0_0_20px_rgba(16,185,129,0.08)]"
+                    style={index === 0 ? { borderColor: 'rgba(16,185,129,0.35)' } : undefined}
                   >
-                    <div className="flex items-center gap-3">
-                      <div className="h-14 w-14 shrink-0 rounded-lg bg-slate-800 overflow-hidden">
-                        {media.url ? (
-                          <img
-                            src={media.url}
-                            alt={`Product ${index + 1}`}
-                            className="h-full w-full object-cover"
-                          />
-                        ) : null}
+                    {/* Image */}
+                    {media.url ? (
+                      <img
+                        src={media.url}
+                        alt={`Product ${index + 1}`}
+                        className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                      />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center bg-slate-900">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-slate-700"><rect width="18" height="18" x="3" y="3" rx="2" ry="2" /><circle cx="9" cy="9" r="2" /><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" /></svg>
                       </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-xs text-slate-300" title={media.url}>
-                          {media.url}
-                        </p>
+                    )}
+
+                    {/* Primary Badge */}
+                    {index === 0 && (
+                      <div className="absolute top-2 left-2 z-10 flex items-center gap-1 rounded-md bg-emerald-500/90 backdrop-blur-sm px-2 py-0.5 shadow-lg">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-white"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>
+                        <span className="text-[10px] font-bold text-white tracking-wide uppercase">Primary</span>
                       </div>
+                    )}
+
+                    {/* Index Badge */}
+                    {index !== 0 && (
+                      <div className="absolute top-2 left-2 z-10 flex h-5 w-5 items-center justify-center rounded-md bg-slate-900/80 backdrop-blur-sm border border-slate-700/50">
+                        <span className="text-[10px] font-semibold text-slate-400">{index + 1}</span>
+                      </div>
+                    )}
+
+                    {/* Hover Overlay */}
+                    <div className="absolute inset-0 flex items-center justify-center gap-2 bg-slate-950/70 backdrop-blur-[2px] opacity-0 group-hover:opacity-100 transition-all duration-300">
+                      {/* Expand */}
+                      <button
+                        type="button"
+                        onClick={() => setForm((prev) => ({ ...prev, _lightboxIndex: index }))}
+                        className="flex h-9 w-9 items-center justify-center rounded-lg bg-white/10 border border-white/20 text-white hover:bg-white/20 hover:scale-110 transition-all duration-200"
+                        title="Preview"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h6v6" /><path d="M9 21H3v-6" /><path d="M21 3l-7 7" /><path d="M3 21l7-7" /></svg>
+                      </button>
+                      {/* Remove */}
                       <button
                         type="button"
                         onClick={() => handleRemoveImage(index)}
-                        className="shrink-0 text-xs text-rose-300 hover:text-rose-200"
+                        className="flex h-9 w-9 items-center justify-center rounded-lg bg-rose-500/20 border border-rose-500/30 text-rose-300 hover:bg-rose-500/30 hover:scale-110 transition-all duration-200"
+                        title="Remove"
                       >
-                        Remove
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18" /><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" /><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" /></svg>
                       </button>
+                    </div>
+
+                    {/* Drag Handle */}
+                    <div className="absolute top-2 right-2 z-10 flex h-5 w-5 items-center justify-center rounded-md bg-slate-900/60 backdrop-blur-sm border border-slate-700/40 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-400"><circle cx="9" cy="5" r="1" /><circle cx="9" cy="12" r="1" /><circle cx="9" cy="19" r="1" /><circle cx="15" cy="5" r="1" /><circle cx="15" cy="12" r="1" /><circle cx="15" cy="19" r="1" /></svg>
                     </div>
                   </div>
                 ))}
+
+                {/* Pending Uploads */}
                 {pendingUploads.map((item) => (
                   <div
                     key={item.id}
-                    className="rounded-lg border border-slate-700/70 bg-slate-950 p-2"
+                    className="group relative aspect-square rounded-xl border border-slate-700/50 bg-slate-950/50 overflow-hidden"
                   >
-                    <div className="flex items-center gap-3">
-                      <div className="h-12 w-12 rounded-lg bg-slate-800 overflow-hidden">
-                        {item.previewUrl ? (
-                          <img
-                            src={item.previewUrl}
-                            alt={item.name}
-                            className="h-full w-full object-cover"
-                          />
-                        ) : null}
+                    {item.previewUrl ? (
+                      <img
+                        src={item.previewUrl}
+                        alt={item.name}
+                        className="h-full w-full object-cover opacity-60"
+                      />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center bg-slate-900">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-slate-700 animate-pulse"><rect width="18" height="18" x="3" y="3" rx="2" ry="2" /></svg>
                       </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-xs text-slate-300">{item.name}</p>
-                        <p
-                          className={`text-[11px] ${
-                            item.status === 'failed'
-                              ? 'text-rose-300'
-                              : 'text-amber-300'
-                          }`}
-                        >
-                          {item.status === 'failed'
-                            ? item.error || 'Upload failed'
-                            : 'Uploading...'}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {item.status === 'failed' ? (
-                          <button
-                            type="button"
-                            onClick={() => retryUpload(item.id)}
-                            className="rounded border border-emerald-500/30 px-2 py-1 text-[11px] text-emerald-300 hover:bg-emerald-500/10"
-                          >
-                            Retry
-                          </button>
-                        ) : null}
-                        <button
-                          type="button"
-                          onClick={() => removePendingUpload(item.id)}
-                          className="rounded border border-slate-700 px-2 py-1 text-[11px] text-slate-300 hover:bg-slate-800"
-                        >
-                          Remove
-                        </button>
-                      </div>
+                    )}
+                    {/* Upload Status Overlay */}
+                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/60 backdrop-blur-[2px]">
+                      {item.status === 'failed' ? (
+                        <>
+                          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-rose-400 mb-1.5"><circle cx="12" cy="12" r="10" /><line x1="15" x2="9" y1="9" y2="15" /><line x1="9" x2="15" y1="9" y2="15" /></svg>
+                          <p className="text-[10px] text-rose-300 font-medium mb-2">Failed</p>
+                          <div className="flex gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => retryUpload(item.id)}
+                              className="rounded-md bg-emerald-500/20 border border-emerald-500/30 px-2 py-0.5 text-[10px] font-semibold text-emerald-300 hover:bg-emerald-500/30 transition-colors"
+                            >
+                              Retry
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => removePendingUpload(item.id)}
+                              className="rounded-md bg-slate-800/60 border border-slate-700/50 px-2 py-0.5 text-[10px] font-semibold text-slate-400 hover:bg-slate-700/50 transition-colors"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="h-5 w-5 rounded-full border-2 border-emerald-400/40 border-t-emerald-400 animate-spin mb-1.5" />
+                          <p className="text-[10px] text-emerald-300/80 font-medium">Uploading...</p>
+                        </>
+                      )}
                     </div>
                   </div>
                 ))}
+
+                {/* Empty / Add More Drop Zone */}
                 {form.media.length === 0 && pendingUploads.length === 0 ? (
-                  <p className="text-xs text-slate-500">No media added yet.</p>
+                  <label className="col-span-full flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-700/50 bg-slate-950/30 py-10 cursor-pointer hover:border-emerald-500/30 hover:bg-emerald-500/5 transition-all duration-300 group/empty">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-slate-800/50 border border-slate-700/40 group-hover/empty:border-emerald-500/30 group-hover/empty:bg-emerald-500/10 transition-all duration-300">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-slate-500 group-hover/empty:text-emerald-400 transition-colors"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" x2="12" y1="3" y2="15" /></svg>
+                    </div>
+                    <p className="text-xs text-slate-500 group-hover/empty:text-slate-400 transition-colors">Drop images here or <span className="text-emerald-400 font-medium">browse</span></p>
+                    <p className="text-[10px] text-slate-600">PNG, JPG, WEBP up to 10 MB</p>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      onChange={handleUpload}
+                      className="hidden"
+                    />
+                  </label>
                 ) : null}
               </div>
+
+              {/* Image Count */}
+              {form.media.length > 0 && (
+                <div className="flex items-center justify-between pt-1 border-t border-slate-800/50">
+                  <p className="text-[11px] text-slate-500">
+                    {form.media.length} {form.media.length === 1 ? 'image' : 'images'}
+                  </p>
+                  <p className="text-[10px] text-slate-600">First image is the primary thumbnail</p>
+                </div>
+              )}
             </div>
+
+            {/* Lightbox Modal */}
+            {typeof form._lightboxIndex === 'number' && form.media[form._lightboxIndex] && (
+              <div
+                className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-md"
+                onClick={() => setForm((prev) => ({ ...prev, _lightboxIndex: undefined }))}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') setForm((prev) => ({ ...prev, _lightboxIndex: undefined }));
+                  if (e.key === 'ArrowRight') setForm((prev) => ({ ...prev, _lightboxIndex: Math.min((prev._lightboxIndex ?? 0) + 1, prev.media.length - 1) }));
+                  if (e.key === 'ArrowLeft') setForm((prev) => ({ ...prev, _lightboxIndex: Math.max((prev._lightboxIndex ?? 0) - 1, 0) }));
+                }}
+                tabIndex={-1}
+                ref={(el) => el?.focus()}
+              >
+                <div className="relative max-h-[85vh] max-w-[85vw]" onClick={(e) => e.stopPropagation()}>
+                  <img
+                    src={form.media[form._lightboxIndex].url}
+                    alt={`Product ${form._lightboxIndex + 1}`}
+                    className="max-h-[85vh] max-w-[85vw] rounded-2xl object-contain shadow-2xl"
+                  />
+                  {/* Close Button */}
+                  <button
+                    type="button"
+                    onClick={() => setForm((prev) => ({ ...prev, _lightboxIndex: undefined }))}
+                    className="absolute -top-3 -right-3 flex h-8 w-8 items-center justify-center rounded-full bg-slate-900/90 border border-slate-700 text-white hover:bg-slate-800 transition-colors shadow-lg"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+                  </button>
+                  {/* Navigation Arrows */}
+                  {form._lightboxIndex > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setForm((prev) => ({ ...prev, _lightboxIndex: (prev._lightboxIndex ?? 1) - 1 }))}
+                      className="absolute left-3 top-1/2 -translate-y-1/2 flex h-10 w-10 items-center justify-center rounded-full bg-slate-900/80 border border-slate-700/50 text-white hover:bg-slate-800 transition-all shadow-lg"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6" /></svg>
+                    </button>
+                  )}
+                  {form._lightboxIndex < form.media.length - 1 && (
+                    <button
+                      type="button"
+                      onClick={() => setForm((prev) => ({ ...prev, _lightboxIndex: (prev._lightboxIndex ?? 0) + 1 }))}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 flex h-10 w-10 items-center justify-center rounded-full bg-slate-900/80 border border-slate-700/50 text-white hover:bg-slate-800 transition-all shadow-lg"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6" /></svg>
+                    </button>
+                  )}
+                  {/* Image Counter */}
+                  <div className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-slate-900/80 backdrop-blur-sm border border-slate-700/50 px-3 py-1">
+                    <span className="text-xs font-medium text-slate-300">{form._lightboxIndex + 1} / {form.media.length}</span>
+                  </div>
+                </div>
+              </div>
+            )}
 
             <div className="rounded-xl border border-slate-800 bg-slate-900 p-4 space-y-3">
               <div>
