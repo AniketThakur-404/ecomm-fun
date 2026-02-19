@@ -4,6 +4,16 @@ import { Heart } from 'lucide-react';
 import { useWishlist } from '../contexts/wishlist-context';
 import { useNotifications } from './NotificationProvider';
 
+const formatAmount = (amount, currency = 'INR') => {
+  const value = Number(amount);
+  if (!Number.isFinite(value)) return '';
+  return new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency,
+    maximumFractionDigits: 0,
+  }).format(value);
+};
+
 const ProductCard = ({ item }) => {
   const {
     handle,
@@ -12,8 +22,8 @@ const ProductCard = ({ item }) => {
     price,
     compareAtPrice,
     vendor,
-    img, // From toProductCard
-    badge, // From toProductCard
+    img,
+    badge,
   } = item || {};
 
   const { toggleItem, isWishlisted } = useWishlist();
@@ -21,8 +31,8 @@ const ProductCard = ({ item }) => {
 
   const inWishlist = useMemo(() => isWishlisted(handle), [isWishlisted, handle]);
 
-  const handleWishlistClick = (e) => {
-    e.preventDefault();
+  const handleWishlistClick = (event) => {
+    event.preventDefault();
     if (!handle) return;
     const nextStateIsAdded = !inWishlist;
     toggleItem(handle, item);
@@ -32,37 +42,38 @@ const ProductCard = ({ item }) => {
     });
   };
 
-  // Handle image source: prioritize 'img' (flat string) then 'featuredImage.url' (nested object)
   const imageUrl = img || featuredImage?.url;
   const imageAlt = featuredImage?.altText || title || 'Product image';
+  const currencyCode =
+    price?.currencyCode ||
+    price?.currency ||
+    compareAtPrice?.currencyCode ||
+    compareAtPrice?.currency ||
+    'INR';
 
-  // Handle price display: 'price' can be a string (formatted) or object (amount/currency)
   const displayPrice =
     typeof price === 'string'
       ? price
       : price?.amount != null
-        ? `ƒ,1${price.amount}`
+        ? formatAmount(price.amount, currencyCode)
         : '';
 
-  // Handle compare price
   const displayComparePrice =
     typeof compareAtPrice === 'string'
       ? compareAtPrice
-      : compareAtPrice?.amount
-        ? `ƒ,1${compareAtPrice.amount}`
+      : compareAtPrice?.amount != null
+        ? formatAmount(compareAtPrice.amount, currencyCode)
         : null;
 
-  // Calculate discount if numeric values are available
   let discount = 0;
   if (compareAtPrice?.amount && price?.amount) {
     discount = Math.round(((compareAtPrice.amount - price.amount) / compareAtPrice.amount) * 100);
   }
 
   return (
-    <div className="group relative bg-white hover:shadow-lg transition-shadow duration-300 cursor-pointer">
+    <div className="group relative cursor-pointer bg-white transition-shadow duration-300 hover:shadow-lg">
       {handle ? (
-        <Link to={`/product/${handle}`} className="block relative overflow-hidden">
-          {/* Image */}
+        <Link to={`/product/${handle}`} className="relative block overflow-hidden">
           <div className="aspect-[3/4] w-full bg-gray-100">
             {imageUrl ? (
               <img
@@ -72,51 +83,47 @@ const ProductCard = ({ item }) => {
                 loading="lazy"
               />
             ) : (
-              <div className="h-full w-full flex items-center justify-center text-gray-300 bg-gray-50">
+              <div className="flex h-full w-full items-center justify-center bg-gray-50 text-gray-300">
                 No Image
               </div>
             )}
           </div>
 
-          {/* Wishlist Button (Visible on Hover) */}
           <button
-            className="absolute bottom-4 right-4 w-8 h-8 bg-white rounded-full flex items-center justify-center shadow-md opacity-0 group-hover:opacity-100 transition-opacity duration-200 hover:bg-pink-50"
+            className="absolute bottom-4 right-4 flex h-8 w-8 items-center justify-center rounded-full bg-white shadow-md opacity-0 transition-opacity duration-200 hover:bg-pink-50 group-hover:opacity-100"
             onClick={handleWishlistClick}
             aria-label={inWishlist ? 'Remove from wishlist' : 'Add to wishlist'}
           >
             <Heart
-              className="w-4 h-4"
+              className="h-4 w-4"
               fill={inWishlist ? 'currentColor' : 'none'}
               color={inWishlist ? '#ff3f6c' : '#374151'}
             />
           </button>
 
-          {/* Rating Badge (Static for now) */}
-          <div className="absolute bottom-2 left-2 bg-white/90 px-1.5 py-0.5 rounded flex items-center gap-1 shadow-sm opacity-80">
+          <div className="absolute bottom-2 left-2 flex items-center gap-1 rounded bg-white/90 px-1.5 py-0.5 shadow-sm opacity-80">
             <span className="text-[10px] font-bold">4.2</span>
-            <span className="text-[10px] text-teal-500">ƒ~.</span>
-            <span className="text-[10px] text-gray-400 border-l border-gray-300 pl-1 ml-1">1.2k</span>
+            <span className="text-[10px] text-teal-500">*</span>
+            <span className="ml-1 border-l border-gray-300 pl-1 text-[10px] text-gray-400">1.2k</span>
           </div>
 
-          {/* New Badge */}
           {badge && (
-            <div className="absolute top-2 left-2 bg-orange-500 text-white text-[10px] font-bold px-1.5 py-0.5 uppercase tracking-wide">
+            <div className="absolute left-2 top-2 bg-orange-500 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
               {badge}
             </div>
           )}
         </Link>
       ) : (
-        <div className="block relative overflow-hidden">
-          <div className="aspect-[3/4] w-full bg-gray-100 flex items-center justify-center text-gray-400">
+        <div className="relative block overflow-hidden">
+          <div className="flex aspect-[3/4] w-full items-center justify-center bg-gray-100 text-gray-400">
             Product Unavailable
           </div>
         </div>
       )}
 
-      {/* Details */}
       <div className="p-3">
-        <h3 className="text-sm font-bold text-[#282c3f] truncate mb-0.5">{vendor || 'Brand'}</h3>
-        <p className="text-xs text-[#535766] truncate mb-2 font-normal">{title || 'Product'}</p>
+        <h3 className="mb-0.5 truncate text-sm font-bold text-[#282c3f]">{vendor || 'Brand'}</h3>
+        <p className="mb-2 truncate text-xs font-normal text-[#535766]">{title || 'Product'}</p>
 
         <div className="flex items-center gap-2 text-sm">
           <span className="font-bold text-[#282c3f]">{displayPrice}</span>
@@ -125,8 +132,8 @@ const ProductCard = ({ item }) => {
               <span className="text-xs text-[#7e818c] line-through decoration-gray-400">
                 {displayComparePrice}
               </span>
-              <span className="text-xs text-[#ff905a] font-normal">
-                ({discount > 0 ? `${discount}% OFF` : ''})
+              <span className="text-xs font-normal text-[#ff905a]">
+                {discount > 0 ? `(${discount}% OFF)` : ''}
               </span>
             </>
           )}

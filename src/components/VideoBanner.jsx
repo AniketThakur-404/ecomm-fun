@@ -4,19 +4,19 @@ import bannerVideo from '../assets/banner-video.mp4';
 
 export default function VideoBanner({ videoSrc = bannerVideo }) {
   return (
-    <section className="relative py-2">
-      <div className="mx-auto w-full max-w-[1600px] px-4 sm:px-6 md:px-8 lg:px-2">
-        <div className="flex flex-col gap-4 border-t border-neutral-200 py-4 uppercase md:flex-row md:items-center md:justify-between">
-          <h2 className="text-xs tracking-[0.35em] text-neutral-600">
+    <section className="section-gap">
+      <div className="site-shell">
+        <div className="flex flex-col gap-4 border-t border-[var(--color-border)] py-4 uppercase md:flex-row md:items-center md:justify-between">
+          <h2 className="text-xs tracking-[0.35em] text-[var(--color-text-muted)]">
             Extension Of Your Expression
           </h2>
-          <button className="flex items-center gap-2 self-start rounded-full border border-neutral-900 px-4 py-2 text-[10px] tracking-[0.35em] transition hover:bg-neutral-900 hover:text-white md:self-auto">
+          <button className="flex items-center gap-2 self-start rounded-full border border-[var(--color-text-main)] px-4 py-2 text-[10px] tracking-[0.35em] text-[var(--color-text-main)] transition hover:bg-[var(--color-primary)] hover:border-[var(--color-primary)] hover:text-white md:self-auto">
             Discover More
           </button>
         </div>
       </div>
-      <div className="mx-auto w-full max-w-[1600px] px-4 sm:px-6 md:px-8 lg:px-2">
-        <div className="relative mt-4 h-[68vh] w-full overflow-hidden bg-black">
+      <div className="site-shell">
+        <div className="relative mt-4 h-[52vh] min-h-[320px] w-full overflow-hidden rounded-2xl bg-black sm:h-[58vh] md:h-[62vh] lg:h-[70vh]">
           <video
             className="h-full w-full object-cover"
             src={videoSrc}
@@ -30,7 +30,7 @@ export default function VideoBanner({ videoSrc = bannerVideo }) {
             <span className="border border-white/60 px-4 py-2 text-[10px] uppercase tracking-[0.35em] text-white/80">
               Discover More
             </span>
-            <span className="text-4xl font-black tracking-[0.6em] md:text-5xl lg:text-6xl">
+            <span className="text-3xl font-black tracking-[0.5em] sm:text-4xl md:text-5xl lg:text-6xl">
               ARADHYA
             </span>
           </div>

@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import HeroWith3D from '../components/HeroWith3D';
-import HeroCarousel from '../components/HeroCarousel';
 import SkintoneSelector from '../components/SkintoneSelector';
 import OccasionSelector from '../components/OccasionSelector';
 import ProductGrid from '../components/ProductGrid';
@@ -132,10 +131,8 @@ export default function HomePage() {
 
   return (
     <div className="home-page">
-      {/* Hero Section with Overlay Search */}
       <div className="relative">
-        {/* Mobile Search Bar Overlay */}
-        <div className="lg:hidden absolute top-4 left-0 w-full z-40 px-4">
+        <div className="absolute left-0 top-3 z-40 w-full px-4 lg:hidden">
           <TypewriterSearch onSearchClick={() => document.dispatchEvent(new CustomEvent('open-search'))} />
         </div>
 
@@ -146,7 +143,7 @@ export default function HomePage() {
         />
       </div>
 
-      <div id="skintone-selector" className="site-shell section-gap">
+      <div id="skintone-selector" className="site-shell pb-4 pt-6 md:pb-6 md:pt-8">
         <SkintoneSelector onSelect={setSelectedSkintone} />
       </div>
 
@@ -156,31 +153,23 @@ export default function HomePage() {
         </div>
       )}
 
-      <div className="site-shell section-gap">
-        <ProductGrid
-          title="Latest Drop"
-          products={latestProducts}
-          ctaHref="/products?category=t-shirts"
-          ctaLabel="Shop Now"
-          loading={latestLoading}
-        />
-      </div>
+      <ProductGrid
+        title="Latest Drop"
+        products={latestProducts}
+        ctaHref="/products?category=t-shirts"
+        ctaLabel="Shop Now"
+        loading={latestLoading}
+      />
 
+      <VideoBanner />
 
-
-      <div className="site-shell section-gap">
-        <VideoBanner />
-      </div>
-
-      <div className="site-shell section-gap">
-        <ProductGrid
-          title="More From ARADHYA"
-          products={moreProducts}
-          ctaHref="/products"
-          ctaLabel="View All"
-          loading={moreLoading}
-        />
-      </div>
+      <ProductGrid
+        title="More From ARADHYA"
+        products={moreProducts}
+        ctaHref="/products"
+        ctaLabel="View All"
+        loading={moreLoading}
+      />
     </div>
   );
 }

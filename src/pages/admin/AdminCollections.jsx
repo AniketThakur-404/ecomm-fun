@@ -13,13 +13,23 @@ const AdminCollections = () => {
   const [error, setError] = useState('');
 
   const loadCollections = async () => {
+    if (!token) {
+      setError('Authentication required. Please log in again.');
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError('');
     try {
       const items = await adminFetchCollections(token, { limit: 200 });
       setCollections(Array.isArray(items) ? items : []);
     } catch (err) {
-      setError(err?.message || 'Unable to load collections.');
+      const errorMessage = err?.message || err?.payload?.error?.message || 'Unable to load collections.';
+      if (err?.status === 401 || err?.status === 403) {
+        setError('Session expired. Please log in again.');
+      } else {
+        setError(errorMessage);
+      }
     } finally {
       setLoading(false);
     }

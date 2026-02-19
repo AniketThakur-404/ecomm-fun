@@ -12,6 +12,7 @@ router.post('/reset-password/:token', userController.resetPassword);
 
 router.get('/me', protect, userController.getProfile);
 router.patch('/me', protect, userController.updateProfile);
+router.patch('/me/password', protect, userController.changePassword);
 router.get('/', protect, requireRole('ADMIN'), userController.listUsers);
 router.patch('/:id/role', protect, requireRole('ADMIN'), userController.updateRole);
 

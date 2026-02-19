@@ -68,15 +68,15 @@ const Layout = () => {
       <WishlistProvider>
         <CartProvider>
           <NotificationProvider>
-            <div className="bg-white text-neutral-900 min-h-screen flex flex-col">
-              <div className="sticky top-0 z-50 hidden lg:block">
+            <div className="min-h-screen flex flex-col bg-[var(--color-bg-page)] text-[var(--color-text-main)]">
+              <div className="sticky top-0 z-50 hidden md:block">
                 <Navbar
                   onSearchClick={() => setSearchOpen(true)}
                   onCartClick={() => setCartOpen(true)}
                 />
               </div>
 
-              <main className="flex-grow">
+              <main className="flex-grow pb-20 md:pb-0">
                 <Outlet context={outletContext} />
               </main>
 

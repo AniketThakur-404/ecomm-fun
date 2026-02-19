@@ -19,6 +19,7 @@ model User {
   resetTokens  PasswordResetToken?
   reviews      Review[]
   orders       Order[]
+  orderRequests OrderRequest[]
 }
 
 model Collection {
@@ -322,8 +323,31 @@ model Order {
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
   user          User?       @relation(fields: [userId], references: [id])
+  requests      OrderRequest[]
 
   @@index([userId])
+}
+
+model OrderRequest {
+  id          String             @id @default(cuid())
+  orderId     String
+  userId      String
+  type        OrderRequestType
+  status      OrderRequestStatus @default(REQUESTED)
+  items       Json?
+  reason      String?
+  comments    String?
+  attachments Json?
+  bankDetails Json?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  resolvedAt  DateTime?
+  order       Order              @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@index([userId, type])
+  @@index([status])
 }
 
 enum CollectionType {
@@ -393,4 +417,18 @@ enum OrderStatus {
   PENDING
   PAID
   FULFILLED
+  CANCELLED
+}
+
+enum OrderRequestType {
+  CANCEL
+  RETURN
+  EXCHANGE
+}
+
+enum OrderRequestStatus {
+  REQUESTED
+  APPROVED
+  REJECTED
+  COMPLETED
 }

@@ -1,5 +1,5 @@
 /* Prisma 7+ datasource config */
-require('dotenv').config({ override: true });
+require('dotenv').config();
 const { defineConfig } = require('prisma/config');
 
 module.exports = defineConfig({

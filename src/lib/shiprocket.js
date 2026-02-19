@@ -3,7 +3,17 @@
 // NOTE: These requests are routed through a backend proxy to avoid exposing credentials
 // and to handle CORS issues with the Shiprocket API.
 
-const SHIPROCKET_API_BASE = '/api/shiprocket';
+const resolveApiBase = () => {
+    const configured = import.meta.env.VITE_API_BASE_URL;
+    if (configured) return configured.replace(/\/+$/, '');
+    if (import.meta.env.PROD && typeof window !== 'undefined') {
+        return window.location.origin;
+    }
+    return '';
+};
+
+const API_BASE = resolveApiBase();
+const SHIPROCKET_API_BASE = API_BASE ? `${API_BASE}/api/shiprocket` : '/api/shiprocket';
 
 /**
  * Check serviceability for a pincode
@@ -19,7 +29,8 @@ export const checkServiceability = async (deliveryPostcode, pickupPostcode = '70
         const response = await fetch(url, { method: 'GET' });
 
         if (!response.ok) {
-            throw new Error('Serviceability API failed');
+            const payload = await response.json().catch(() => null);
+            throw new Error(payload?.error || payload?.details || 'Serviceability API failed');
         }
 
         const data = await response.json();
@@ -53,7 +64,8 @@ export const trackOrder = async ({ awbCode, orderId }) => {
         const response = await fetch(url, { method: 'GET' });
 
         if (!response.ok) {
-            throw new Error('Tracking API failed');
+            const payload = await response.json().catch(() => null);
+            throw new Error(payload?.error || payload?.details || 'Tracking API failed');
         }
 
         const data = await response.json();

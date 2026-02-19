@@ -1008,22 +1008,35 @@ const AdminProductForm = () => {
                   Add
                 </button>
               </div>
-              <div className="grid gap-2">
+              <div className="grid gap-3">
                 {form.media.map((media, index) => (
-                  <div key={`${media.url}-${index}`} className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-lg bg-slate-800 overflow-hidden">
-                      {media.url ? (
-                        <img src={media.url} alt="Product" className="h-full w-full object-cover" />
-                      ) : null}
+                  <div
+                    key={`${media.url}-${index}`}
+                    className="rounded-lg border border-slate-700/70 bg-slate-950 p-2"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="h-14 w-14 shrink-0 rounded-lg bg-slate-800 overflow-hidden">
+                        {media.url ? (
+                          <img
+                            src={media.url}
+                            alt={`Product ${index + 1}`}
+                            className="h-full w-full object-cover"
+                          />
+                        ) : null}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-xs text-slate-300" title={media.url}>
+                          {media.url}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveImage(index)}
+                        className="shrink-0 text-xs text-rose-300 hover:text-rose-200"
+                      >
+                        Remove
+                      </button>
                     </div>
-                    <p className="flex-1 text-xs text-slate-300 truncate">{media.url}</p>
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveImage(index)}
-                      className="text-xs text-rose-300 hover:text-rose-200"
-                    >
-                      Remove
-                    </button>
                   </div>
                 ))}
                 {pendingUploads.map((item) => (

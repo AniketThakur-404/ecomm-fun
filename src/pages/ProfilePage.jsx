@@ -1,7 +1,9 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/auth-context';
-import { formatMoney } from '../lib/api';
+import { useCart } from '../contexts/cart-context';
+import { useCatalog } from '../contexts/catalog-context';
+import { fetchProductByHandle, formatMoney, getProductImageUrl } from '../lib/api';
 import {
     User,
     Package,
@@ -33,8 +35,32 @@ const formatStatusLabel = (status, fallback = 'Processing') => {
 };
 
 const ProfilePage = () => {
-    const { customer, orders, isAuthenticated, loading, logout } = useAuth();
+    const {
+        customer,
+        orders,
+        isAuthenticated,
+        loading,
+        logout,
+        updateCustomerProfile,
+        changeCustomerPassword,
+        refreshCustomer,
+    } = useAuth();
+    const { items: cartItems, totalItems } = useCart();
+    const { getProduct } = useCatalog();
     const navigate = useNavigate();
+    const [externalProducts, setExternalProducts] = useState({});
+    const [profileForm, setProfileForm] = useState({ name: '', email: '' });
+    const [profileSaving, setProfileSaving] = useState(false);
+    const [profileSuccess, setProfileSuccess] = useState('');
+    const [profileError, setProfileError] = useState('');
+    const [passwordForm, setPasswordForm] = useState({
+        currentPassword: '',
+        newPassword: '',
+        confirmPassword: '',
+    });
+    const [passwordSaving, setPasswordSaving] = useState(false);
+    const [passwordSuccess, setPasswordSuccess] = useState('');
+    const [passwordError, setPasswordError] = useState('');
 
     useEffect(() => {
         if (!loading && !isAuthenticated) {
@@ -46,6 +72,128 @@ const ProfilePage = () => {
         await logout();
         navigate('/');
     };
+
+    useEffect(() => {
+        setProfileForm({
+            name: customer?.name || '',
+            email: customer?.email || '',
+        });
+    }, [customer?.email, customer?.name]);
+
+    const handleProfileInput = (field, value) => {
+        setProfileForm((prev) => ({
+            ...prev,
+            [field]: value,
+        }));
+    };
+
+    const handlePasswordInput = (field, value) => {
+        setPasswordForm((prev) => ({
+            ...prev,
+            [field]: value,
+        }));
+    };
+
+    const handleSaveProfile = async (event) => {
+        event.preventDefault();
+        setProfileError('');
+        setProfileSuccess('');
+
+        const updates = {
+            name: profileForm.name.trim(),
+            email: profileForm.email.trim(),
+        };
+
+        if (!updates.name && !updates.email) {
+            setProfileError('Please provide your name or email.');
+            return;
+        }
+
+        setProfileSaving(true);
+        const result = await updateCustomerProfile(updates);
+        setProfileSaving(false);
+        if (!result?.success) {
+            setProfileError(result?.error || 'Unable to update profile.');
+            return;
+        }
+        setProfileSuccess('Profile updated successfully.');
+        if (typeof refreshCustomer === 'function') {
+            await refreshCustomer();
+        }
+    };
+
+    const handleChangePassword = async (event) => {
+        event.preventDefault();
+        setPasswordError('');
+        setPasswordSuccess('');
+
+        const currentPassword = passwordForm.currentPassword;
+        const newPassword = passwordForm.newPassword;
+        const confirmPassword = passwordForm.confirmPassword;
+
+        if (!currentPassword || !newPassword || !confirmPassword) {
+            setPasswordError('Please fill all password fields.');
+            return;
+        }
+        if (newPassword.length < 6) {
+            setPasswordError('New password must be at least 6 characters.');
+            return;
+        }
+        if (newPassword !== confirmPassword) {
+            setPasswordError('New password and confirm password must match.');
+            return;
+        }
+
+        setPasswordSaving(true);
+        const result = await changeCustomerPassword({ currentPassword, newPassword });
+        setPasswordSaving(false);
+        if (!result?.success) {
+            setPasswordError(result?.error || 'Unable to change password.');
+            return;
+        }
+
+        setPasswordForm({
+            currentPassword: '',
+            newPassword: '',
+            confirmPassword: '',
+        });
+        setPasswordSuccess('Password changed successfully.');
+    };
+
+    const cartHandles = useMemo(
+        () => Array.from(new Set(cartItems.map((item) => item.slug).filter(Boolean))),
+        [cartItems],
+    );
+
+    useEffect(() => {
+        const missingHandles = cartHandles.filter(
+            (handle) => !getProduct(handle) && !externalProducts[handle],
+        );
+        if (!missingHandles.length) return;
+
+        let cancelled = false;
+
+        (async () => {
+            const fetched = {};
+            for (const handle of missingHandles) {
+                try {
+                    const product = await fetchProductByHandle(handle);
+                    if (product) {
+                        fetched[handle] = product;
+                    }
+                } catch (error) {
+                    console.error(`Failed to load cart preview product "${handle}"`, error);
+                }
+            }
+
+            if (cancelled || !Object.keys(fetched).length) return;
+            setExternalProducts((prev) => ({ ...prev, ...fetched }));
+        })();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [cartHandles, externalProducts, getProduct]);
 
     if (loading) {
         return (
@@ -66,12 +214,14 @@ const ProfilePage = () => {
     const pendingCount = orders.filter((order) => order.status === 'PENDING').length;
     const inTransit = orders.filter((order) => order.status === 'PAID').length;
     const delivered = orders.filter((order) => order.status === 'FULFILLED').length;
+    const cancelled = orders.filter((order) => order.status === 'CANCELLED').length;
 
     const stats = [
         { label: 'Total orders', value: orders.length },
         { label: 'Processing', value: pendingCount },
         { label: 'In transit', value: inTransit },
         { label: 'Delivered', value: delivered },
+        { label: 'Cancelled', value: cancelled },
     ];
 
     const getFulfillmentBadge = (status) => {
@@ -92,6 +242,23 @@ const ProfilePage = () => {
         return parsed.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
     };
 
+    const cartPreviewItems = useMemo(
+        () =>
+            cartItems.map((item) => ({
+                id: item.id,
+                slug: item.slug,
+                size: item.size ?? null,
+                quantity: Number(item.quantity ?? 1),
+                product: getProduct(item.slug) ?? externalProducts[item.slug] ?? null,
+            })),
+        [cartItems, externalProducts, getProduct],
+    );
+    const visibleCartPreviewItems = useMemo(
+        () => cartPreviewItems.slice(0, 3),
+        [cartPreviewItems],
+    );
+    const hiddenCartPreviewCount = Math.max(cartPreviewItems.length - visibleCartPreviewItems.length, 0);
+
     const renderOrderCard = (order) => {
         const items = Array.isArray(order.items) ? order.items : [];
         const itemCount = items.reduce((sum, item) => sum + Number(item?.quantity ?? 0), 0);
@@ -108,13 +275,13 @@ const ProfilePage = () => {
         const isCancelled = normalizedStatus === 'CANCELLED' || normalizedStatus === 'CANCELED';
         const primaryAction = isDelivered ? 'Return' : 'Cancel';
         const secondaryAction = isDelivered ? 'Exchange' : 'Replace';
-        const actionHref = '/cancel-refund-exchange';
+        const actionHref = `/cancel-refund-exchange?orderId=${encodeURIComponent(order.id)}`;
 
         return (
             <div key={order.id} className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow">
                 <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-gray-100">
                     <div className="flex items-center gap-3">
-                        <div className={`w-10 h-10 rounded-full flex items-center justify-center ${toneClasses[fulfillment.tone] || toneClasses.muted}`}>
+                        <div className={`h-10 w-10 rounded-full flex items-center justify-center ${toneClasses[fulfillment.tone] || toneClasses.muted}`}>
                             {fulfillment.Icon ? <fulfillment.Icon className="w-5 h-5" /> : null}
                         </div>
                         <div>
@@ -152,11 +319,17 @@ const ProfilePage = () => {
 
 
                 <div className="pt-3 border-t border-gray-100 flex flex-col gap-3">
-                    <div className="flex flex-wrap gap-2">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                        <Link
+                            to={`/orders/${order.id}`}
+                            className="w-full rounded-full border border-gray-300 px-4 py-2 text-center text-xs font-semibold text-gray-700 transition-colors hover:border-gray-900 hover:text-gray-900 sm:flex-1"
+                        >
+                            View Details
+                        </Link>
                         {!isCancelled ? (
                             <Link
                                 to={actionHref}
-                                className="flex-1 px-4 py-2 rounded-full text-xs font-semibold border border-gray-300 text-gray-700 hover:border-gray-900 hover:text-gray-900 transition-colors text-center"
+                                className="w-full rounded-full border border-gray-300 px-4 py-2 text-center text-xs font-semibold text-gray-700 transition-colors hover:border-gray-900 hover:text-gray-900 sm:flex-1"
                             >
                                 {primaryAction}
                             </Link>
@@ -164,25 +337,11 @@ const ProfilePage = () => {
                         {!isCancelled ? (
                             <Link
                                 to={actionHref}
-                                className="flex-1 px-4 py-2 rounded-full text-xs font-semibold border border-gray-300 text-gray-700 hover:border-gray-900 hover:text-gray-900 transition-colors text-center"
+                                className="w-full rounded-full border border-gray-300 px-4 py-2 text-center text-xs font-semibold text-gray-700 transition-colors hover:border-gray-900 hover:text-gray-900 sm:flex-1"
                             >
                                 {secondaryAction}
                             </Link>
                         ) : null}
-                        {trackHref ? (
-                            <a
-                                href={trackHref}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="flex-1 px-4 py-2 rounded-full text-xs font-semibold border border-gray-300 text-gray-700 hover:border-gray-900 hover:text-gray-900 transition-colors text-center"
-                            >
-                                Track
-                            </a>
-                        ) : (
-                            <span className="flex-1 px-4 py-2 rounded-full text-xs font-semibold border border-gray-200 text-gray-400 text-center cursor-not-allowed">
-                                Track
-                            </span>
-                        )}
                     </div>
                     {isCancelled ? (
                         <p className="text-xs text-gray-500">This order was cancelled.</p>
@@ -193,7 +352,7 @@ const ProfilePage = () => {
     };
 
     return (
-        <div className="min-h-screen bg-gray-50">
+        <div className="min-h-screen bg-[var(--color-bg-page)]">
             <div className="site-shell pt-24 pb-14 space-y-8">
                 <div className="relative overflow-hidden rounded-2xl border border-pink-100 bg-gradient-to-r from-pink-50 via-orange-50 to-amber-50 p-6 shadow-sm">
                     <div className="absolute inset-0 bg-white/40 pointer-events-none" aria-hidden="true"></div>
@@ -232,7 +391,7 @@ const ProfilePage = () => {
                         </div>
                     </div>
 
-                    <div className="relative mt-6 grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div className="relative mt-6 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
                         {stats.map((stat) => (
                             <div
                                 key={stat.label}
@@ -253,14 +412,81 @@ const ProfilePage = () => {
                                 <User className="w-4 h-4 text-pink-600" />
                                 <p className="text-sm font-semibold text-gray-900">Profile & contact</p>
                             </div>
-                            <div className="space-y-3 text-sm text-gray-700">
-                                <div className="flex items-start gap-3">
-                                    <Mail className="w-4 h-4 text-gray-500 mt-0.5" />
+                            <div className="space-y-5 text-sm text-gray-700">
+                                <form onSubmit={handleSaveProfile} className="space-y-3">
                                     <div>
-                                        <p className="font-semibold text-gray-900">Email</p>
-                                        <p>{customer.email}</p>
+                                        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
+                                            Full Name
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={profileForm.name}
+                                            onChange={(event) => handleProfileInput('name', event.target.value)}
+                                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[var(--color-primary)] focus:outline-none"
+                                            placeholder="Your name"
+                                        />
                                     </div>
+                                    <div>
+                                        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
+                                            Email
+                                        </label>
+                                        <input
+                                            type="email"
+                                            value={profileForm.email}
+                                            onChange={(event) => handleProfileInput('email', event.target.value)}
+                                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[var(--color-primary)] focus:outline-none"
+                                            placeholder="you@example.com"
+                                        />
+                                    </div>
+                                    {profileError ? <p className="text-xs text-rose-600">{profileError}</p> : null}
+                                    {profileSuccess ? <p className="text-xs text-emerald-600">{profileSuccess}</p> : null}
+                                    <button
+                                        type="submit"
+                                        disabled={profileSaving}
+                                            className="rounded-full bg-[var(--color-primary)] px-4 py-2 text-xs font-semibold uppercase tracking-wide text-white hover:bg-[var(--color-primary-dark)] disabled:cursor-not-allowed disabled:bg-gray-300"
+                                    >
+                                        {profileSaving ? 'Saving...' : 'Save Profile'}
+                                    </button>
+                                </form>
+
+                                <div className="border-t border-gray-100 pt-4">
+                                    <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                                        Change Password
+                                    </p>
+                                    <form onSubmit={handleChangePassword} className="space-y-3">
+                                        <input
+                                            type="password"
+                                            value={passwordForm.currentPassword}
+                                            onChange={(event) => handlePasswordInput('currentPassword', event.target.value)}
+                                            placeholder="Current password"
+                                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[var(--color-primary)] focus:outline-none"
+                                        />
+                                        <input
+                                            type="password"
+                                            value={passwordForm.newPassword}
+                                            onChange={(event) => handlePasswordInput('newPassword', event.target.value)}
+                                            placeholder="New password"
+                                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[var(--color-primary)] focus:outline-none"
+                                        />
+                                        <input
+                                            type="password"
+                                            value={passwordForm.confirmPassword}
+                                            onChange={(event) => handlePasswordInput('confirmPassword', event.target.value)}
+                                            placeholder="Confirm new password"
+                                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[var(--color-primary)] focus:outline-none"
+                                        />
+                                        {passwordError ? <p className="text-xs text-rose-600">{passwordError}</p> : null}
+                                        {passwordSuccess ? <p className="text-xs text-emerald-600">{passwordSuccess}</p> : null}
+                                        <button
+                                            type="submit"
+                                            disabled={passwordSaving}
+                                            className="rounded-full border border-gray-300 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-gray-700 hover:border-gray-900 hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-60"
+                                        >
+                                            {passwordSaving ? 'Updating...' : 'Update Password'}
+                                        </button>
+                                    </form>
                                 </div>
+
                                 <div className="text-sm text-gray-600 bg-gray-50 border border-dashed border-gray-200 rounded-lg p-3">
                                     Add a shipping address during checkout to speed up delivery updates.
                                 </div>
@@ -308,20 +534,82 @@ const ProfilePage = () => {
                         </div>
 
                         {orders.length === 0 ? (
-                            <div className="bg-white border border-gray-200 rounded-2xl p-8 text-center shadow-sm">
-                                <div className="mx-auto mb-4 w-12 h-12 rounded-full bg-pink-50 text-pink-600 flex items-center justify-center">
-                                    <Package className="w-6 h-6" />
+                            totalItems > 0 ? (
+                                <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
+                                    <div className="mx-auto mb-4 w-12 h-12 rounded-full bg-pink-50 text-pink-600 flex items-center justify-center">
+                                        <Package className="w-6 h-6" />
+                                    </div>
+                                    <p className="text-lg font-semibold text-gray-900 text-center">No orders yet</p>
+                                    <p className="text-sm text-gray-600 mb-4 text-center">
+                                        You have {totalItems} item{totalItems === 1 ? '' : 's'} in your bag. Complete checkout to see orders here.
+                                    </p>
+
+                                    <div className="rounded-xl border border-gray-100 divide-y divide-gray-100">
+                                        {visibleCartPreviewItems.map((item) => {
+                                            const imageUrl = getProductImageUrl(item.product);
+                                            const title = item.product?.title || item.slug || 'Product';
+
+                                            return (
+                                                <div key={item.id} className="flex items-center gap-3 px-3 py-3">
+                                                    <div className="h-14 w-12 overflow-hidden rounded-md bg-gray-100 border border-gray-200">
+                                                        {imageUrl ? (
+                                                            <img src={imageUrl} alt={title} className="h-full w-full object-cover" />
+                                                        ) : (
+                                                            <div className="flex h-full w-full items-center justify-center text-[10px] font-semibold text-gray-500">
+                                                                {(title || 'P').slice(0, 1).toUpperCase()}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                    <div className="min-w-0 flex-1">
+                                                        <p className="truncate text-sm font-semibold text-gray-900">{title}</p>
+                                                        <p className="text-xs text-gray-500">
+                                                            Qty x{item.quantity}
+                                                            {item.size ? ` | Size ${item.size}` : ''}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+
+                                    {hiddenCartPreviewCount > 0 ? (
+                                        <p className="mt-3 text-xs text-gray-500 text-center">
+                                            +{hiddenCartPreviewCount} more item{hiddenCartPreviewCount === 1 ? '' : 's'} in bag
+                                        </p>
+                                    ) : null}
+
+                                    <div className="mt-4 flex flex-wrap justify-center gap-2">
+                                        <Link
+                                            to="/cart"
+                                            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-semibold bg-black text-white hover:bg-gray-900 transition-colors"
+                                        >
+                                            Go to bag
+                                            <ArrowUpRight className="w-4 h-4" />
+                                        </Link>
+                                        <Link
+                                            to="/products"
+                                            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-semibold border border-gray-200 text-gray-800 hover:bg-gray-50 transition-colors"
+                                        >
+                                            Continue shopping
+                                        </Link>
+                                    </div>
                                 </div>
-                                <p className="text-lg font-semibold text-gray-900">No orders yet</p>
-                                <p className="text-sm text-gray-600 mb-6">When you shop, your orders, returns, and refunds will show up here.</p>
-                                <Link
-                                    to="/products"
-                                    className="inline-flex items-center gap-2 px-5 py-3 rounded-full text-sm font-semibold bg-black text-white hover:bg-gray-900 transition-colors"
-                                >
-                                    Start shopping
-                                    <ArrowUpRight className="w-4 h-4" />
-                                </Link>
-                            </div>
+                            ) : (
+                                <div className="bg-white border border-gray-200 rounded-2xl p-8 text-center shadow-sm">
+                                    <div className="mx-auto mb-4 w-12 h-12 rounded-full bg-pink-50 text-pink-600 flex items-center justify-center">
+                                        <Package className="w-6 h-6" />
+                                    </div>
+                                    <p className="text-lg font-semibold text-gray-900">No orders yet</p>
+                                    <p className="text-sm text-gray-600 mb-6">When you shop, your orders, returns, and refunds will show up here.</p>
+                                    <Link
+                                        to="/products"
+                                        className="inline-flex items-center gap-2 px-5 py-3 rounded-full text-sm font-semibold bg-black text-white hover:bg-gray-900 transition-colors"
+                                    >
+                                        Start shopping
+                                        <ArrowUpRight className="w-4 h-4" />
+                                    </Link>
+                                </div>
+                            )
                         ) : (
                             <div className="space-y-4">
                                 {orders.map((order) => renderOrderCard(order))}

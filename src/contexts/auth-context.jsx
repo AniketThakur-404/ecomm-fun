@@ -1,6 +1,13 @@
 /* eslint-disable react-refresh/only-export-components */
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { fetchMyOrders, fetchProfile, signIn, signUp } from '../lib/api';
+import {
+  fetchMyOrders,
+  fetchProfile,
+  signIn,
+  signUp,
+  updateProfile as updateProfileApi,
+  updatePassword as updatePasswordApi,
+} from '../lib/api';
 
 const AuthContext = createContext(null);
 
@@ -130,6 +137,43 @@ export function AuthProvider({ children }) {
     setError(null);
   }, [clearToken]);
 
+  const updateCustomerProfile = useCallback(
+    async (updates) => {
+      const token = getStoredToken();
+      if (!token) {
+        return { success: false, error: 'You are not logged in.' };
+      }
+
+      try {
+        const updated = await updateProfileApi(token, updates);
+        setCustomer(updated ?? null);
+        return { success: true, data: updated };
+      } catch (e) {
+        const msg = e?.message || 'Unable to update profile.';
+        return { success: false, error: msg };
+      }
+    },
+    [getStoredToken],
+  );
+
+  const changeCustomerPassword = useCallback(
+    async ({ currentPassword, newPassword }) => {
+      const token = getStoredToken();
+      if (!token) {
+        return { success: false, error: 'You are not logged in.' };
+      }
+
+      try {
+        const response = await updatePasswordApi(token, { currentPassword, newPassword });
+        return { success: true, data: response };
+      } catch (e) {
+        const msg = e?.message || 'Unable to update password.';
+        return { success: false, error: msg };
+      }
+    },
+    [getStoredToken],
+  );
+
   const value = {
     customer,
     orders,
@@ -139,6 +183,9 @@ export function AuthProvider({ children }) {
     login,
     register,
     logout,
+    updateCustomerProfile,
+    changeCustomerPassword,
+    getAuthToken: getStoredToken,
     refreshCustomer: () => fetchCustomer(getStoredToken()),
   };
 

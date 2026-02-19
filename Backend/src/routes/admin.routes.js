@@ -10,6 +10,8 @@ router.post('/login', adminController.login);
 
 router.use(protect, requireRole('ADMIN'));
 
+router.get('/stats', adminController.getStats);
+
 router.get('/products', productController.listProducts);
 router.get('/products/export', productController.exportProducts);
 router.post('/products/import-csv', productController.importProductsCsv);

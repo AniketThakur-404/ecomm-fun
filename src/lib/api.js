@@ -650,10 +650,79 @@ export const fetchProfile = async (token) => {
   return unwrap(payload);
 };
 
+export const updateProfile = async (token, data) =>
+  unwrap(
+    await requestWithAuth('/users/me', token, {
+      method: 'PATCH',
+      body: data,
+    }),
+  );
+
+export const updatePassword = async (token, data) =>
+  unwrap(
+    await requestWithAuth('/users/me/password', token, {
+      method: 'PATCH',
+      body: data,
+    }),
+  );
+
 export const fetchMyOrders = async (token) => {
   const payload = await requestWithAuth('/orders/my', token);
   return unwrap(payload) || [];
 };
+
+export const cancelOrder = async (token, orderId, data) =>
+  unwrap(
+    await requestWithAuth(`/orders/${encodeURIComponent(orderId)}/cancel`, token, {
+      method: 'POST',
+      body: data,
+    }),
+  );
+
+export const requestOrderReturn = async (token, orderId, data) =>
+  unwrap(
+    await requestWithAuth(`/orders/${encodeURIComponent(orderId)}/return`, token, {
+      method: 'POST',
+      body: data,
+    }),
+  );
+
+export const requestOrderExchange = async (token, orderId, data) =>
+  unwrap(
+    await requestWithAuth(`/orders/${encodeURIComponent(orderId)}/exchange`, token, {
+      method: 'POST',
+      body: data,
+    }),
+  );
+
+export const fetchMyOrderRequests = async (token) => {
+  const payload = await requestWithAuth('/orders/requests/my', token);
+  return unwrap(payload) || [];
+};
+
+export const createOrder = async (token, data) =>
+  unwrap(
+    await requestWithAuth('/orders', token, {
+      method: 'POST',
+      body: data,
+    }),
+  );
+
+export const createRazorpayOrder = async (token, data) =>
+  unwrap(
+    await requestWithAuth('/orders/razorpay/order', token, {
+      method: 'POST',
+      body: data,
+    }),
+  );
+
+export const confirmRazorpayCheckout = async (token, data) =>
+  unwrap(
+    await requestWithAuth('/orders/razorpay/confirm', token, {
+      method: 'POST',
+      body: data,
+    }),
+  );
 
 export const trackOrder = async ({ orderId, email, phone }) => {
   const payload = await request('/orders/track', {
@@ -662,6 +731,45 @@ export const trackOrder = async ({ orderId, email, phone }) => {
   });
   return unwrap(payload);
 };
+
+export const fetchReviews = async (params = {}) => {
+  const payload = await request(`/reviews${buildQuery(params)}`);
+  const response = unwrap(payload) || {};
+  return {
+    items: Array.isArray(response.items) ? response.items : [],
+    meta: response.meta || {},
+  };
+};
+
+export const adminFetchReviews = async (token, params = {}) => {
+  const payload = await requestWithAuth(`/reviews/manage${buildQuery(params)}`, token);
+  const response = unwrap(payload) || {};
+  return {
+    items: Array.isArray(response.items) ? response.items : [],
+    meta: response.meta || {},
+  };
+};
+
+export const submitReview = async (token, data) =>
+  unwrap(
+    await requestWithAuth('/reviews', token, {
+      method: 'POST',
+      body: data,
+    }),
+  );
+
+export const updateReview = async (token, reviewId, data) =>
+  unwrap(
+    await requestWithAuth(`/reviews/${encodeURIComponent(reviewId)}`, token, {
+      method: 'PUT',
+      body: data,
+    }),
+  );
+
+export const deleteReview = async (token, reviewId) =>
+  requestWithAuth(`/reviews/${encodeURIComponent(reviewId)}`, token, {
+    method: 'DELETE',
+  });
 
 export const adminLogin = async ({ email, password }) => {
   const payload = await request('/admin/login', {
@@ -679,6 +787,30 @@ export const adminFetchProducts = async (token, params = {}) => {
   );
   return payload;
 };
+
+export const adminFetchUsers = async (token, params = {}) => {
+  const payload = await requestWithAuth(`/users${buildQuery(params)}`, token);
+  return payload;
+};
+
+export const adminUpdateUserRole = async (token, userId, role) =>
+  unwrap(
+    await requestWithAuth(`/users/${encodeURIComponent(userId)}/role`, token, {
+      method: 'PATCH',
+      body: { role },
+    }),
+  );
+
+export const adminFetchOrders = async (token, params = {}) =>
+  requestWithAuth(`/orders${buildQuery(params)}`, token);
+
+export const adminUpdateOrder = async (token, orderId, data) =>
+  unwrap(
+    await requestWithAuth(`/orders/${encodeURIComponent(orderId)}`, token, {
+      method: 'PATCH',
+      body: data,
+    }),
+  );
 
 export const adminCreateProduct = async (token, data) =>
   unwrap(
@@ -753,3 +885,6 @@ export const uploadImage = async (token, file) => {
   });
   return unwrap(payload);
 };
+
+export const adminFetchStats = async (token) =>
+  unwrap(await requestWithAuth('/admin/stats', token));

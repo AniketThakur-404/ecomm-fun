@@ -7,10 +7,6 @@ import {
   Share2,
   ShoppingBag,
   Truck,
-  Home,
-  Search,
-  User,
-  Menu,
 } from 'lucide-react';
 import PincodeChecker from '../components/PincodeChecker';
 import MobilePageHeader from '../components/MobilePageHeader';
@@ -25,6 +21,7 @@ import { useAuth } from '../contexts/auth-context';
 import {
   extractOptionValues,
   extractSizeOptions,
+  fetchReviews,
   fetchProductsPage,
   fetchProductByHandle,
   fetchProductsFromCollection,
@@ -32,6 +29,7 @@ import {
   formatMoney,
   getProductImageUrl,
   isSizeOptionName,
+  submitReview,
   toProductCard,
   normaliseTokenValue,
   searchProducts,
@@ -139,7 +137,7 @@ const ProductDetails = () => {
   const { addItem } = useCart();
   const { isWishlisted, toggleItem } = useWishlist();
   const { notify } = useNotifications();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, getAuthToken, customer } = useAuth();
 
   const [product, setProduct] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -160,13 +158,26 @@ const ProductDetails = () => {
   const [selectedFbtItems, setSelectedFbtItems] = useState(new Set());
   const [showSizeModal, setShowSizeModal] = useState(false);
   const [showSizeChart, setShowSizeChart] = useState(false);
+  const [liveReviewItems, setLiveReviewItems] = useState([]);
+  const [liveReviewSummary, setLiveReviewSummary] = useState(null);
+  const [reviewLoading, setReviewLoading] = useState(false);
+  const [hasLoadedReviews, setHasLoadedReviews] = useState(false);
+  const [reviewSubmitError, setReviewSubmitError] = useState('');
+  const [reviewSubmitSuccess, setReviewSubmitSuccess] = useState('');
+  const [reviewSubmitting, setReviewSubmitting] = useState(false);
+  const [reviewForm, setReviewForm] = useState({
+    rating: 5,
+    title: '',
+    comment: '',
+  });
+
   const productHandle = product?.handle || '';
   const reviewData = useMemo(
     () => parseReviewPayload(product?.reviewsJson),
     [product?.reviewsJson],
   );
-  const reviewItems = reviewData.items ?? [];
-  const reviewSummary = reviewData.summary;
+  const reviewItems = hasLoadedReviews ? liveReviewItems : reviewData.items ?? [];
+  const reviewSummary = hasLoadedReviews ? liveReviewSummary : reviewData.summary;
   const reviewSummaryText = useMemo(() => {
     if (!reviewSummary) return '';
     const averageValue = reviewSummary.average;
@@ -185,6 +196,105 @@ const ProductDetails = () => {
     if (countLabel) return `${countLabel} reviews`;
     return '';
   }, [reviewSummary]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadReviews = async () => {
+      if (!product?.id) {
+        setLiveReviewItems([]);
+        setLiveReviewSummary(null);
+        setHasLoadedReviews(false);
+        return;
+      }
+      setReviewLoading(true);
+      setHasLoadedReviews(false);
+      try {
+        const response = await fetchReviews({ productId: product.id });
+        if (cancelled) return;
+        const normalizedItems = (response?.items || []).map((review) => ({
+          ...review,
+          author:
+            review?.user?.name ||
+            review?.user?.email ||
+            review?.author ||
+            'Customer',
+          body: review?.comment || review?.body || '',
+          date: review?.createdAt || review?.date || '',
+        }));
+        setLiveReviewItems(normalizedItems);
+        setLiveReviewSummary({
+          average: response?.meta?.averageRating ?? null,
+          count: response?.meta?.publishedCount ?? normalizedItems.length,
+        });
+        setHasLoadedReviews(true);
+      } catch (loadError) {
+        if (!cancelled) {
+          console.error('Failed to load product reviews', loadError);
+          setHasLoadedReviews(false);
+        }
+      } finally {
+        if (!cancelled) {
+          setReviewLoading(false);
+        }
+      }
+    };
+
+    loadReviews();
+    return () => {
+      cancelled = true;
+    };
+  }, [product?.id]);
+
+  const handleReviewFieldChange = (field, value) => {
+    setReviewForm((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
+  };
+
+  const handleReviewSubmit = async (event) => {
+    event.preventDefault();
+    setReviewSubmitError('');
+    setReviewSubmitSuccess('');
+
+    if (!isAuthenticated) {
+      navigate(`/login?redirect=/product/${productHandle || slug}`);
+      return;
+    }
+
+    const token = typeof getAuthToken === 'function' ? getAuthToken() : null;
+    if (!token) {
+      setReviewSubmitError('Session expired. Please log in again.');
+      return;
+    }
+
+    if (!product?.id) {
+      setReviewSubmitError('Unable to submit review right now.');
+      return;
+    }
+
+    try {
+      setReviewSubmitting(true);
+      await submitReview(token, {
+        productId: product.id,
+        rating: Number(reviewForm.rating),
+        title: reviewForm.title?.trim() || undefined,
+        comment: reviewForm.comment?.trim() || undefined,
+      });
+
+      setReviewForm({
+        rating: 5,
+        title: '',
+        comment: '',
+      });
+      setReviewSubmitSuccess('Thanks. Your review was submitted for moderation.');
+    } catch (submitError) {
+      setReviewSubmitError(submitError?.message || 'Unable to submit your review.');
+    } finally {
+      setReviewSubmitting(false);
+    }
+  };
 
   const inWishlist = useMemo(
     () => (productHandle ? isWishlisted(productHandle) : false),
@@ -1223,6 +1333,9 @@ const ProductDetails = () => {
                 {reviewSummaryText ? (
                   <p className="mb-3 text-sm text-gray-600">{reviewSummaryText}</p>
                 ) : null}
+                {reviewLoading ? (
+                  <p className="text-sm text-gray-500 mb-3">Loading reviews...</p>
+                ) : null}
                 {reviewItems.length ? (
                   <div className="space-y-3">
                     {reviewItems.slice(0, 3).map((review, index) => {
@@ -1274,6 +1387,91 @@ const ProductDetails = () => {
                 ) : (
                   <p className="text-sm text-gray-600">No reviews yet.</p>
                 )}
+
+                <div className="mt-5 border-t border-gray-200 pt-4">
+                  <h4 className="text-sm font-semibold text-gray-900 mb-3">Write a review</h4>
+                  {isAuthenticated ? (
+                    <form onSubmit={handleReviewSubmit} className="space-y-3">
+                      <div>
+                        <p className="text-xs font-medium text-gray-600 mb-2">Rating</p>
+                        <div className="flex gap-2">
+                          {[1, 2, 3, 4, 5].map((value) => (
+                            <button
+                              key={`rating-${value}`}
+                              type="button"
+                              onClick={() => handleReviewFieldChange('rating', value)}
+                              className={`h-9 w-9 rounded border text-sm font-semibold transition ${
+                                Number(reviewForm.rating) === value
+                                  ? 'border-black bg-black text-white'
+                                  : 'border-gray-300 text-gray-700 hover:border-gray-900'
+                              }`}
+                            >
+                              {value}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-gray-600">
+                          Title (optional)
+                        </label>
+                        <input
+                          type="text"
+                          value={reviewForm.title}
+                          onChange={(event) => handleReviewFieldChange('title', event.target.value)}
+                          placeholder="Short headline"
+                          maxLength={150}
+                          className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-black focus:outline-none"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-gray-600">
+                          Review
+                        </label>
+                        <textarea
+                          value={reviewForm.comment}
+                          onChange={(event) => handleReviewFieldChange('comment', event.target.value)}
+                          placeholder="Share your experience"
+                          maxLength={1000}
+                          rows={4}
+                          className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-black focus:outline-none"
+                        />
+                      </div>
+
+                      {reviewSubmitError ? (
+                        <p className="text-xs text-rose-600">{reviewSubmitError}</p>
+                      ) : null}
+                      {reviewSubmitSuccess ? (
+                        <p className="text-xs text-emerald-600">{reviewSubmitSuccess}</p>
+                      ) : null}
+
+                      <button
+                        type="submit"
+                        disabled={reviewSubmitting || !reviewForm.comment.trim()}
+                        className="rounded bg-black px-4 py-2 text-xs font-semibold uppercase tracking-wide text-white hover:bg-gray-900 disabled:cursor-not-allowed disabled:bg-gray-300"
+                      >
+                        {reviewSubmitting ? 'Submitting...' : 'Submit Review'}
+                      </button>
+                      {customer?.email ? (
+                        <p className="text-xs text-gray-500">
+                          Posting as {customer.name || customer.email}
+                        </p>
+                      ) : null}
+                    </form>
+                  ) : (
+                    <div className="text-sm text-gray-600">
+                      <Link
+                        to={`/login?redirect=/product/${productHandle || slug}`}
+                        className="font-semibold text-gray-900 underline hover:no-underline"
+                      >
+                        Sign in
+                      </Link>{' '}
+                      to submit a review.
+                    </div>
+                  )}
+                </div>
               </AccordionItem>
             </div>
           </div>
@@ -1292,65 +1490,13 @@ const ProductDetails = () => {
         </div>
       )}
 
-      <div className="fixed bottom-0 left-0 right-0 z-40 lg:hidden flex flex-col shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] bg-white">
-        {/* Button Wrapper: Added px-4 (side spacing) and vertical padding */}
-        <div className="px-4 pt-4 pb-2">
+      <div className="fixed bottom-[68px] left-0 right-0 z-40 bg-white/98 px-4 pb-2 pt-3 shadow-[0_-4px_10px_rgba(0,0,0,0.08)] lg:hidden">
           <button
             onClick={handleAddToCart}
-            className="w-full bg-black text-white h-12 flex items-center justify-center"
+            className="flex h-12 w-full items-center justify-center rounded-md bg-[var(--color-primary)] text-white transition-colors hover:bg-[var(--color-primary-dark)]"
           >
-            <span
-              className="font-bold text-lg uppercase tracking-wider relative"
-              style={{
-                // textShadow: '-2px -1px 0 #00ffff, 2px 1px 0 #ff0000',
-                letterSpacing: '0.05em'
-              }}
-            >
-              Add to Bag
-            </span>
+            <span className="text-sm font-bold uppercase tracking-[0.2em]">Add to Bag</span>
           </button>
-        </div>
-
-        {/* Bottom Menu Navigation */}
-        <div className="bg-white h-14 w-full flex items-center justify-between px-6 pb-2">
-          {/* Home */}
-          <Link to="/" className="flex flex-col items-center justify-center w-12 h-full text-gray-900">
-            <Home className="w-6 h-6 stroke-[1.5]" />
-          </Link>
-
-          {/* Search */}
-          <button
-            onClick={() => document.dispatchEvent(new CustomEvent('open-search'))}
-            className="flex flex-col items-center justify-center w-12 h-full text-gray-900"
-          >
-            <div className="relative">
-              <Search className="w-6 h-6 stroke-[1.5]" />
-            </div>
-          </button>
-
-          {/* Shop Text */}
-          <Link to="/products" className="flex flex-col items-center justify-center w-12 h-full">
-            <span className="text-sm font-normal tracking-wide text-gray-900">SHOP</span>
-          </Link>
-
-          {/* Bag with Heart Badge */}
-          <button
-            onClick={openCartDrawer}
-            className="flex flex-col items-center justify-center w-12 h-full text-gray-900 relative"
-          >
-            <div className="relative">
-              <ShoppingBag className="w-6 h-6 stroke-[1.5]" />
-              <div className="absolute -bottom-1 -right-1 bg-white border border-gray-900 rounded-full w-4 h-4 flex items-center justify-center">
-                <Heart className="w-2.5 h-2.5 fill-black text-black" />
-              </div>
-            </div>
-          </button>
-
-          {/* Profile */}
-          <Link to={isAuthenticated ? "/profile" : "/login"} className="flex flex-col items-center justify-center w-12 h-full text-gray-900">
-            <User className="w-6 h-6 stroke-[1.5]" />
-          </Link>
-        </div>
       </div>
 
     </div>

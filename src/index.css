@@ -3,16 +3,37 @@
 @theme {
   --font-sans: 'Assistant', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --color-primary: #ff3f6c;
-  /* Myntra Pink */
   --color-primary-dark: #d43256;
+  --color-primary-soft: #ffe6ee;
+  --color-primary-rgb: 255 63 108;
   --color-text-main: #282c3f;
-  --color-text-muted: #94969f;
-  --color-bg-page: #ffffff;
+  --color-text-heading: #1f2433;
+  --color-text-muted: #6b7280;
+  --color-bg-page: #f7f7fa;
+  --color-bg-surface: #ffffff;
+  --color-bg-surface-muted: #f3f4f6;
+  --color-bg-dark: #0f172a;
+  --color-border: #e5e7eb;
+  --color-border-strong: #d1d5db;
 }
 
 @layer base {
+  html {
+    scroll-behavior: smooth;
+    margin: 0;
+    padding: 0;
+  }
+
   body {
-    @apply font-sans text-[--color-text-main] bg-[--color-bg-page] antialiased overflow-x-hidden;
+    @apply m-0 p-0 font-sans text-[var(--color-text-main)] bg-[var(--color-bg-page)] antialiased overflow-x-hidden;
+    line-height: 1.5;
+  }
+
+  #root {
+    width: 100%;
+    max-width: 100%;
+    margin: 0;
+    padding: 0;
   }
 
   h1,
@@ -23,6 +44,10 @@
   h6 {
     @apply font-bold;
   }
+
+  a {
+    color: inherit;
+  }
 }
 
 @layer components {
@@ -31,7 +56,19 @@
   }
 
   .section-gap {
-    @apply py-6 lg:py-8;
+    @apply py-6 md:py-8 lg:py-10;
+  }
+
+  .pb-safe {
+    padding-bottom: calc(env(safe-area-inset-bottom) + 0.75rem);
+  }
+
+  .surface-card {
+    @apply rounded-2xl border border-[var(--color-border)] bg-[var(--color-bg-surface)] shadow-sm;
+  }
+
+  .primary-pill {
+    @apply rounded-full bg-[var(--color-primary)] text-white transition-colors hover:bg-[var(--color-primary-dark)];
   }
 }
 

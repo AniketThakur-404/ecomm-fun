@@ -2,8 +2,10 @@ const { z } = require('zod');
 
 const { getPrisma } = require('../db/prismaClient');
 
+const REVIEW_STATUSES = ['PENDING', 'PUBLISHED', 'REJECTED'];
+
 const mediaSchema = z.object({
-  url: z.string().url('Media URL must be valid'),
+  url: z.string().trim().min(1, 'Media URL is required'),
 });
 
 const baseReviewSchema = z.object({
@@ -21,39 +23,24 @@ const baseReviewSchema = z.object({
 
 const createReviewSchema = baseReviewSchema.extend({
   productId: z.string().min(1, 'Product id is required'),
-  userId: z.string().min(1, 'User id is required'),
-  status: z
-    .enum(['PENDING', 'PUBLISHED', 'REJECTED'])
-    .optional(),
+  status: z.enum(REVIEW_STATUSES).optional(),
 });
 
 const updateReviewSchema = baseReviewSchema
   .partial()
   .extend({
-    status: z.enum(['PENDING', 'PUBLISHED', 'REJECTED']).optional(),
+    status: z.enum(REVIEW_STATUSES).optional(),
   })
-  .refine(
-    (payload) =>
-      Object.keys(payload).length > 0,
-    {
-      message: 'Provide at least one field to update',
-    }
-  );
+  .refine((payload) => Object.keys(payload).length > 0, {
+    message: 'Provide at least one field to update',
+  });
 
-const querySchema = z
-  .object({
-    status: z
-      .enum(['PENDING', 'PUBLISHED', 'REJECTED', 'ALL'])
-      .optional()
-      .default('PUBLISHED'),
-    productId: z.string().min(1).optional(),
-    userId: z.string().min(1).optional(),
-    search: z.string().min(2).optional(),
-  })
-  .refine(
-    (value) => value.productId || value.userId || value.search || value.status,
-    { message: 'Invalid query' }
-  );
+const querySchema = z.object({
+  status: z.enum(['PENDING', 'PUBLISHED', 'REJECTED', 'ALL']).optional().default('PUBLISHED'),
+  productId: z.string().min(1).optional(),
+  userId: z.string().min(1).optional(),
+  search: z.string().trim().min(2).optional(),
+});
 
 const reviewInclude = {
   user: {
@@ -73,15 +60,27 @@ const reviewInclude = {
   media: true,
 };
 
+const toZodMessage = (error, fallback) => error?.errors?.[0]?.message || fallback;
+
+const canManageReview = (reqUser, reviewUserId) =>
+  reqUser?.role === 'ADMIN' || reqUser?.id === reviewUserId;
+
 exports.listReviews = async (req, res, next) => {
   try {
     const prisma = await getPrisma();
     const parsed = querySchema.parse(req.query ?? {});
+    const isAdmin = req.user?.role === 'ADMIN';
+
+    const effectiveStatus = isAdmin
+      ? parsed.status === 'ALL'
+        ? undefined
+        : parsed.status
+      : 'PUBLISHED';
 
     const where = {
+      status: effectiveStatus,
       productId: parsed.productId,
       userId: parsed.userId,
-      status: parsed.status === 'ALL' ? undefined : parsed.status,
       OR: parsed.search
         ? [
             { title: { contains: parsed.search, mode: 'insensitive' } },
@@ -92,7 +91,6 @@ exports.listReviews = async (req, res, next) => {
         : undefined,
     };
 
-    // Remove undefined keys to keep Prisma query clean
     Object.keys(where).forEach((key) => {
       if (where[key] === undefined) {
         delete where[key];
@@ -105,47 +103,43 @@ exports.listReviews = async (req, res, next) => {
       include: reviewInclude,
     });
 
-    const summary =
-      reviews.length === 0
-        ? { averageRating: 0, publishedCount: 0, pendingCount: 0 }
-        : await prisma.review.groupBy({
-            where: {
-              ...where,
-              status: undefined,
-            },
-            by: ['status'],
-            _count: true,
-          });
+    const aggregate = await prisma.review.groupBy({
+      by: ['status'],
+      where: {
+        ...where,
+        status: undefined,
+      },
+      _count: true,
+    });
 
-    const published = Array.isArray(summary)
-      ? summary.find((item) => item.status === 'PUBLISHED')?._count ?? 0
-      : 0;
-    const pending = Array.isArray(summary)
-      ? summary.find((item) => item.status === 'PENDING')?._count ?? 0
-      : 0;
+    const publishedCount = aggregate.find((item) => item.status === 'PUBLISHED')?._count ?? 0;
+    const pendingCount = aggregate.find((item) => item.status === 'PENDING')?._count ?? 0;
+    const rejectedCount = aggregate.find((item) => item.status === 'REJECTED')?._count ?? 0;
 
-    let averageRating = 0;
-    if (reviews.length) {
-      const publishedReviews = reviews.filter((item) => item.status === 'PUBLISHED');
-      if (publishedReviews.length) {
-        const total = publishedReviews.reduce((acc, item) => acc + item.rating, 0);
-        averageRating = Number((total / publishedReviews.length).toFixed(2));
-      }
-    }
+    const publishedReviews = reviews.filter((item) => item.status === 'PUBLISHED');
+    const averageRating = publishedReviews.length
+      ? Number(
+          (
+            publishedReviews.reduce((sum, review) => sum + Number(review.rating || 0), 0) /
+            publishedReviews.length
+          ).toFixed(2),
+        )
+      : 0;
 
     return res.status(200).json({
       items: reviews,
       meta: {
         count: reviews.length,
         averageRating,
-        publishedCount: published,
-        pendingCount: pending,
+        publishedCount,
+        pendingCount: isAdmin ? pendingCount : 0,
+        rejectedCount: isAdmin ? rejectedCount : 0,
       },
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return res.status(400).json({
-        message: error.errors[0]?.message || 'Invalid review query',
+        message: toZodMessage(error, 'Invalid review query'),
       });
     }
     return next(error);
@@ -162,6 +156,12 @@ exports.getReview = async (req, res, next) => {
     if (!review) {
       return res.status(404).json({ message: 'Review not found' });
     }
+
+    const isPublished = review.status === 'PUBLISHED';
+    if (!isPublished && !canManageReview(req.user, review.userId)) {
+      return res.status(404).json({ message: 'Review not found' });
+    }
+
     return res.status(200).json(review);
   } catch (error) {
     return next(error);
@@ -172,15 +172,16 @@ exports.createReview = async (req, res, next) => {
   try {
     const payload = createReviewSchema.parse(req.body);
     const prisma = await getPrisma();
+    const isAdmin = req.user?.role === 'ADMIN';
 
     const review = await prisma.review.create({
       data: {
         rating: payload.rating,
         title: payload.title ?? null,
         comment: payload.comment ?? null,
-        status: payload.status ?? 'PENDING',
+        status: isAdmin ? payload.status ?? 'PUBLISHED' : 'PENDING',
         product: { connect: { id: payload.productId } },
-        user: { connect: { id: payload.userId } },
+        user: { connect: { id: req.user.id } },
         media: payload.media?.length
           ? {
               create: payload.media.map((item) => ({ url: item.url })),
@@ -193,11 +194,11 @@ exports.createReview = async (req, res, next) => {
   } catch (error) {
     if (error instanceof z.ZodError) {
       return res.status(400).json({
-        message: error.errors[0]?.message || 'Invalid review payload',
+        message: toZodMessage(error, 'Invalid review payload'),
       });
     }
     if (error.code === 'P2003') {
-      return res.status(400).json({ message: 'Invalid productId or userId' });
+      return res.status(400).json({ message: 'Invalid productId' });
     }
     return next(error);
   }
@@ -208,13 +209,29 @@ exports.updateReview = async (req, res, next) => {
     const payload = updateReviewSchema.parse(req.body);
     const prisma = await getPrisma();
 
+    const existing = await prisma.review.findUnique({
+      where: { id: req.params.id },
+      select: { id: true, userId: true, status: true },
+    });
+    if (!existing) {
+      return res.status(404).json({ message: 'Review not found' });
+    }
+
+    const isAdmin = req.user?.role === 'ADMIN';
+    if (!canManageReview(req.user, existing.userId)) {
+      return res.status(403).json({ message: 'Forbidden' });
+    }
+    if (!isAdmin && payload.status !== undefined) {
+      return res.status(403).json({ message: 'Only admins can change review status' });
+    }
+
     const review = await prisma.review.update({
       where: { id: req.params.id },
       data: {
         rating: payload.rating,
         title: payload.title,
         comment: payload.comment,
-        status: payload.status,
+        status: isAdmin ? payload.status : undefined,
         media: payload.media
           ? {
               deleteMany: {},
@@ -228,7 +245,7 @@ exports.updateReview = async (req, res, next) => {
   } catch (error) {
     if (error instanceof z.ZodError) {
       return res.status(400).json({
-        message: error.errors[0]?.message || 'Invalid review update payload',
+        message: toZodMessage(error, 'Invalid review update payload'),
       });
     }
     if (error.code === 'P2025') {
@@ -241,6 +258,18 @@ exports.updateReview = async (req, res, next) => {
 exports.deleteReview = async (req, res, next) => {
   try {
     const prisma = await getPrisma();
+    const existing = await prisma.review.findUnique({
+      where: { id: req.params.id },
+      select: { id: true, userId: true },
+    });
+
+    if (!existing) {
+      return res.status(404).json({ message: 'Review not found' });
+    }
+    if (!canManageReview(req.user, existing.userId)) {
+      return res.status(403).json({ message: 'Forbidden' });
+    }
+
     await prisma.review.delete({
       where: { id: req.params.id },
     });

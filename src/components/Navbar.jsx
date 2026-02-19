@@ -22,14 +22,13 @@ const Navbar = ({ onSearchClick, onCartClick }) => {
   ];
 
   return (
-    <header className="sticky top-0 z-50 bg-white shadow-sm border-b border-gray-100 font-sans">
-      <div className="site-shell h-24 flex items-center gap-4">
-
-        {/* Left: Logo & Mobile Toggle */}
-        <div className="flex items-center gap-4 flex-shrink-0">
+    <header className="sticky top-0 z-50 border-b border-[var(--color-border)] bg-[var(--color-bg-surface)] shadow-sm font-sans">
+      <div className="site-shell flex h-20 items-center gap-3 md:h-[88px] md:gap-4">
+        <div className="flex flex-shrink-0 items-center gap-2 md:gap-3">
           <button
-            className="lg:hidden p-2 -ml-2 text-gray-700"
+            className="xl:hidden rounded-md p-2 text-[var(--color-text-main)] hover:bg-[var(--color-bg-surface-muted)]"
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            aria-label={mobileMenuOpen ? 'Close menu' : 'Open menu'}
           >
             {mobileMenuOpen ? <X /> : <Menu />}
           </button>
@@ -38,105 +37,115 @@ const Navbar = ({ onSearchClick, onCartClick }) => {
             <img
               src="/aradhya-logo.png"
               alt="Aradhya"
-              className="h-16 w-auto object-contain"
+              className="h-12 w-auto object-contain md:h-14"
             />
           </Link>
         </div>
 
-        {/* Center: Desktop Nav */}
-        <nav className="hidden lg:flex flex-1 items-center justify-center gap-4 xl:gap-6 min-w-0">
+        <nav className="hidden min-w-0 flex-1 items-center justify-center gap-3 xl:flex xl:gap-5">
           {navLinks.map((link) => (
             <Link
               key={link.label}
               to={link.href}
-              className="text-sm font-bold text-[#282c3f] tracking-wide hover:text-[#ff3f6c] hover:border-b-4 hover:border-[#ff3f6c] py-9 transition-all relative whitespace-nowrap"
+              className="relative whitespace-nowrap py-8 text-sm font-bold tracking-wide text-[var(--color-text-main)] transition-colors hover:text-[var(--color-primary)]"
             >
               {link.label}
               {link.isNew && (
-                <span className="absolute -top-0 -right-2 text-[10px] text-[#ff3f6c] font-bold uppercase">New</span>
+                <span className="absolute -right-2 top-0 text-[10px] font-bold uppercase text-[var(--color-primary)]">
+                  New
+                </span>
               )}
             </Link>
           ))}
         </nav>
 
-        {/* Right: Search & Actions */}
-        <div className="flex items-center gap-4 flex-shrink-0">
-          {/* Search Bar */}
-          <div className="hidden md:flex items-center relative bg-[#f5f5f6] rounded-md w-44 lg:w-48 xl:w-52 2xl:w-56 group focus-within:ring-1 focus-within:ring-gray-200 transition-shadow">
+        <div className="ml-auto flex flex-shrink-0 items-center gap-2 md:gap-3">
+          <div className="group relative hidden items-center rounded-md bg-[var(--color-bg-surface-muted)] transition-shadow focus-within:ring-1 focus-within:ring-[var(--color-border-strong)] lg:flex lg:w-44 xl:w-52">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <Search className="h-4 w-4 text-gray-500" />
+              <Search className="h-4 w-4 text-[var(--color-text-muted)]" />
             </div>
             <input
               type="text"
               placeholder="Search for items..."
-              className="block w-full pl-10 pr-3 py-2.5 bg-transparent text-sm text-gray-700 placeholder-gray-500 focus:outline-none rounded-md"
+              className="block w-full rounded-md bg-transparent py-2.5 pl-10 pr-3 text-sm text-[var(--color-text-main)] placeholder-[var(--color-text-muted)] focus:outline-none"
               onClick={onSearchClick}
+              onFocus={onSearchClick}
+              readOnly
             />
           </div>
 
-          {/* Icons */}
-          <div className="flex items-center gap-4">
-            {/* Mobile Search Icon */}
+          <div className="flex items-center gap-3">
             <button
-              className="md:hidden flex flex-col items-center gap-1 cursor-pointer group"
+              className="lg:hidden flex items-center justify-center rounded-md p-1.5 text-[var(--color-text-main)] hover:bg-[var(--color-bg-surface-muted)]"
               onClick={onSearchClick}
               aria-label="Search"
             >
-              <Search className="w-5 h-5 text-gray-700 group-hover:text-black" />
+              <Search className="h-5 w-5" />
             </button>
 
-            <div
-              className="flex flex-col items-center gap-1 cursor-pointer group"
+            <button
+              type="button"
+              className="group flex flex-col items-center gap-1 rounded-md p-1 text-[var(--color-text-main)] hover:text-[var(--color-primary)]"
               onClick={() => navigate(isAuthenticated ? '/profile' : '/login')}
+              aria-label="Profile"
             >
-              <User className="w-5 h-5 text-gray-700 group-hover:text-black" />
-              <span className="text-xs font-bold text-gray-700 group-hover:text-black hidden xl:block">Profile</span>
-            </div>
+              <User className="h-5 w-5" />
+              <span className="hidden text-[11px] font-bold xl:block">Profile</span>
+            </button>
+
             <Link
               to="/wishlist"
-              className="flex flex-col items-center gap-1 cursor-pointer group relative"
+              className="group relative flex flex-col items-center gap-1 rounded-md p-1 text-[var(--color-text-main)] hover:text-[var(--color-primary)]"
             >
               <Heart
-                className="w-5 h-5 group-hover:text-black"
+                className="h-5 w-5"
                 fill={wishlistCount > 0 ? 'currentColor' : 'none'}
-                color={wishlistCount > 0 ? '#ff3f6c' : '#374151'}
+                color={
+                  wishlistCount > 0
+                    ? 'var(--color-primary)'
+                    : 'var(--color-text-main)'
+                }
               />
               {wishlistCount > 0 && (
-                <span className="absolute -top-1 -right-1 bg-[#ff3f6c] text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center">
+                <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-[var(--color-primary)] text-[10px] font-bold text-white">
                   {wishlistCount}
                 </span>
               )}
-              <span className="text-xs font-bold text-gray-700 group-hover:text-black hidden xl:block">Wishlist</span>
+              <span className="hidden text-[11px] font-bold xl:block">Wishlist</span>
             </Link>
-            <div
-              className="flex flex-col items-center gap-1 cursor-pointer group relative"
+
+            <button
+              type="button"
+              className="group relative flex flex-col items-center gap-1 rounded-md p-1 text-[var(--color-text-main)] hover:text-[var(--color-primary)]"
               onClick={onCartClick}
+              aria-label="Bag"
             >
-              <ShoppingBag className="w-5 h-5 text-gray-700 group-hover:text-black" />
+              <ShoppingBag className="h-5 w-5" />
               {totalItems > 0 && (
-                <span className="absolute -top-1 right-0 bg-[#ff3f6c] text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center">
+                <span className="absolute right-0 top-0 flex h-4 w-4 items-center justify-center rounded-full bg-[var(--color-primary)] text-[10px] font-bold text-white">
                   {totalItems}
                 </span>
               )}
-              <span className="text-xs font-bold text-gray-700 group-hover:text-black hidden xl:block">Bag</span>
-            </div>
+              <span className="hidden text-[11px] font-bold xl:block">Bag</span>
+            </button>
           </div>
         </div>
       </div>
 
-      {/* Mobile Menu */}
       {mobileMenuOpen && (
-        <div className="lg:hidden absolute top-24 left-0 w-full bg-white border-b border-gray-200 shadow-lg py-4 px-4 flex flex-col gap-4 z-40">
+        <div className="absolute left-0 top-full z-40 w-full border-b border-[var(--color-border)] bg-[var(--color-bg-surface)] px-5 py-4 shadow-lg xl:hidden">
+          <div className="flex flex-col gap-2">
           {navLinks.map((link) => (
             <Link
               key={link.label}
               to={link.href}
-              className="text-sm font-bold text-gray-800 py-2 border-b border-gray-100"
+              className="rounded-md border border-transparent px-2 py-2 text-sm font-bold text-[var(--color-text-main)] hover:border-[var(--color-border)] hover:bg-[var(--color-bg-surface-muted)]"
               onClick={() => setMobileMenuOpen(false)}
             >
               {link.label}
             </Link>
           ))}
+          </div>
         </div>
       )}
     </header>

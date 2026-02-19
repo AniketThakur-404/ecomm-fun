@@ -33,6 +33,15 @@ const updateProfileSchema = z
     message: 'No changes provided',
   });
 
+const changePasswordSchema = z
+  .object({
+    currentPassword: z.string().min(1, 'Current password is required'),
+    newPassword: z.string().min(6, 'New password must be at least 6 characters'),
+  })
+  .refine((payload) => payload.currentPassword !== payload.newPassword, {
+    message: 'New password must be different from current password',
+  });
+
 const sanitizeUser = (user) => {
   if (!user) return null;
   const { passwordHash, ...rest } = user;
@@ -121,20 +130,41 @@ exports.getProfile = async (req, res, next) => {
   }
 };
 
-exports.listUsers = async (_req, res, next) => {
+exports.listUsers = async (req, res, next) => {
   try {
     const prisma = await getPrisma();
-    const users = await prisma.user.findMany({
-      orderBy: { createdAt: 'desc' },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        role: true,
-        createdAt: true,
-      },
-    });
-    return sendSuccess(res, users);
+    const take = Math.min(Number.parseInt(req.query?.limit, 10) || 50, 200);
+    const pageNumber = Math.max(Number.parseInt(req.query?.page, 10) || 1, 1);
+    const skip = (pageNumber - 1) * take;
+    const searchToken = String(req.query?.search || '').trim();
+
+    const where = {};
+    if (searchToken) {
+      where.OR = [
+        { name: { contains: searchToken, mode: 'insensitive' } },
+        { email: { contains: searchToken, mode: 'insensitive' } },
+        { role: { contains: searchToken, mode: 'insensitive' } },
+      ];
+    }
+
+    const [users, total] = await Promise.all([
+      prisma.user.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          role: true,
+          createdAt: true,
+        },
+        take,
+        skip,
+      }),
+      prisma.user.count({ where }),
+    ]);
+
+    return sendSuccess(res, users, { total, page: pageNumber, limit: take });
   } catch (error) {
     return next(error);
   }
@@ -251,5 +281,41 @@ exports.updateProfile = async (req, res, next) => {
       return sendError(res, 400, error.errors[0]?.message || 'Invalid payload');
     }
     return handleError(error, res, next);
+  }
+};
+
+exports.changePassword = async (req, res, next) => {
+  try {
+    const payload = changePasswordSchema.parse(req.body);
+    const prisma = await getPrisma();
+
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      select: { id: true, passwordHash: true },
+    });
+
+    if (!user || !user.passwordHash) {
+      return sendError(res, 404, 'User not found');
+    }
+
+    const isValid = await bcrypt.compare(payload.currentPassword, user.passwordHash);
+    if (!isValid) {
+      return sendError(res, 400, 'Current password is incorrect');
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    const passwordHash = await bcrypt.hash(payload.newPassword, salt);
+
+    await prisma.user.update({
+      where: { id: req.user.id },
+      data: { passwordHash },
+    });
+
+    return sendSuccess(res, { message: 'Password updated successfully.' });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return sendError(res, 400, error.errors[0]?.message || 'Invalid payload');
+    }
+    return next(error);
   }
 };

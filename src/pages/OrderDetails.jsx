@@ -1,139 +1,195 @@
-import React from 'react';
-import { Search, User, ShoppingBag, Filter, ChevronRight, RefreshCw, Box, ArrowRight } from 'lucide-react';
+import React, { useEffect, useMemo } from 'react';
+import { CheckCircle2, Clock3, Package, Truck, AlertCircle, ArrowUpRight } from 'lucide-react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/auth-context';
+import { formatMoney } from '../lib/api';
+import { useNotifications } from '../components/NotificationProvider';
+
+const formatDate = (value) => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleDateString('en-IN', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
+};
+
+const statusMeta = (status) => {
+  const normalized = String(status || '').toUpperCase();
+  if (normalized === 'FULFILLED') {
+    return {
+      label: 'Delivered',
+      tone: 'text-emerald-700 bg-emerald-50 border-emerald-200',
+      Icon: CheckCircle2,
+    };
+  }
+  if (normalized === 'PAID') {
+    return {
+      label: 'Paid',
+      tone: 'text-blue-700 bg-blue-50 border-blue-200',
+      Icon: Truck,
+    };
+  }
+  if (normalized === 'PENDING') {
+    return {
+      label: 'Pending',
+      tone: 'text-amber-700 bg-amber-50 border-amber-200',
+      Icon: Clock3,
+    };
+  }
+  if (normalized === 'CANCELLED') {
+    return {
+      label: 'Cancelled',
+      tone: 'text-rose-700 bg-rose-50 border-rose-200',
+      Icon: AlertCircle,
+    };
+  }
+  return {
+    label: normalized || 'Unknown',
+    tone: 'text-gray-700 bg-gray-100 border-gray-200',
+    Icon: AlertCircle,
+  };
+};
 
 export default function OrderDetails() {
-    return (
-        <div className="min-h-screen bg-gray-50 pb-20">
-            {/* Header */}
-            <div className="bg-white px-4 py-3 flex items-center justify-between sticky top-0 z-10 shadow-sm">
-                <div className="flex items-center gap-3">
-                    <button className="p-1">
-                        {/* Hamburger Menu Icon Placeholder */}
-                        <div className="space-y-1">
-                            <div className="w-5 h-0.5 bg-gray-600"></div>
-                            <div className="w-5 h-0.5 bg-gray-600"></div>
-                            <div className="w-5 h-0.5 bg-gray-600"></div>
-                        </div>
-                    </button>
-                    {/* Myntra Logo Placeholder */}
-                    <img src="/aradhya-logo.png" alt="Aradhya" className="h-8 w-auto" />
-                </div>
-                <div className="flex items-center gap-4 text-gray-600">
-                    <Search className="w-6 h-6" />
-                    <User className="w-6 h-6" />
-                    <ShoppingBag className="w-6 h-6" />
-                </div>
-            </div>
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { orders, isAuthenticated, loading } = useAuth();
+  const { notify } = useNotifications();
 
-            {/* Insider Banner */}
-            <div className="bg-gradient-to-r from-blue-50 to-pink-50 p-3 flex justify-between items-center">
-                <div>
-                    <h3 className="text-xs font-bold text-gray-800 uppercase tracking-wide">ARADHYA INSIDER</h3>
-                    <p className="text-[10px] text-gray-600">Earn 10 supercoins for every ₹ 100 purchase</p>
-                </div>
-                <button className="bg-pink-500 text-white text-xs font-bold px-4 py-2 rounded shadow-sm">
-                    Enroll Now
-                </button>
-            </div>
+  const justPlaced = Boolean(location.state?.justPlaced);
+  const orderNumberFromState = location.state?.orderNumber || '';
 
-            {/* Search and Filter */}
-            <div className="bg-white p-3 flex gap-3">
-                <div className="flex-1 relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                    <input
-                        type="text"
-                        placeholder="Search in orders"
-                        className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:border-gray-400"
-                    />
-                </div>
-                <button className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded font-bold text-gray-700 text-sm">
-                    <Filter className="w-4 h-4" /> FILTER
-                </button>
-            </div>
+  useEffect(() => {
+    if (!loading && !isAuthenticated) {
+      navigate('/login?redirect=/orders', { replace: true });
+    }
+  }, [isAuthenticated, loading, navigate]);
 
-            {/* Promo Banner */}
-            <div className="mx-3 mt-3 bg-white p-3 rounded-lg shadow-sm flex items-center justify-between border border-gray-100">
-                <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-yellow-100 rounded-full flex items-center justify-center text-yellow-600 font-bold text-xs">₹</div>
-                    <div>
-                        <p className="text-sm text-gray-800">Earn up to <span className="font-bold text-green-600">₹5000 Aradhya Cash*</span></p>
-                        <p className="text-xs text-gray-500">Write a review or add images!</p>
-                    </div>
-                </div>
-                <div className="w-6 h-6 bg-pink-500 rounded-full flex items-center justify-center text-white">
-                    <ChevronRight className="w-4 h-4" />
-                </div>
-            </div>
+  useEffect(() => {
+    if (justPlaced && orderNumberFromState) {
+      notify({
+        title: 'Order Placed!',
+        message: `Your order ${orderNumberFromState} has been confirmed.`,
+      });
+    }
+  }, [justPlaced, orderNumberFromState, notify]);
 
-            {/* Order Item 1 */}
-            <div className="bg-white mt-3 p-4">
-                <div className="flex items-center gap-3 mb-3">
-                    <div className="w-8 h-8 bg-teal-700 rounded-full flex items-center justify-center">
-                        <Box className="w-4 h-4 text-white" />
-                    </div>
-                    <div>
-                        <h3 className="font-bold text-teal-700 text-sm">Confirmed</h3>
-                        <p className="text-xs text-gray-500">Arriving by Thu, 4 Dec</p>
-                    </div>
-                </div>
+  const sortedOrders = useMemo(
+    () =>
+      [...(Array.isArray(orders) ? orders : [])].sort(
+        (a, b) => new Date(b?.createdAt || 0).getTime() - new Date(a?.createdAt || 0).getTime(),
+      ),
+    [orders],
+  );
 
-                <div className="bg-gray-50 p-3 rounded-lg flex gap-3">
-                    <img src="https://images.unsplash.com/photo-1596755094514-f87e34085b2c?ixlib=rb-4.0.3&auto=format&fit=crop&w=300&q=80" alt="Shoes" className="w-16 h-16 object-cover rounded" />
-                    <div className="flex-1">
-                        <h4 className="font-bold text-gray-900 text-sm">Puma</h4>
-                        <p className="text-xs text-gray-600">Carina Slim Perf Women Sneakers</p>
-                        <p className="text-xs text-gray-500 mt-1">Size: 7</p>
-                    </div>
-                    <ChevronRight className="w-5 h-5 text-gray-400" />
-                </div>
+  if (loading || !isAuthenticated) return null;
 
-                <div className="flex gap-3 mt-3">
-                    <button className="flex-1 py-2 border border-gray-300 rounded text-sm font-bold text-gray-700">Cancel</button>
-                    <button className="flex-1 py-2 border border-gray-300 rounded text-sm font-bold text-gray-700">Replace</button>
-                </div>
-
-                <div className="mt-3 flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-xs text-gray-600">
-                        <RefreshCw className="w-4 h-4" />
-                        <span>Replacement is available</span>
-                        <span className="bg-pink-500 text-white px-1 rounded text-[10px] font-bold">NEW</span>
-                    </div>
-                    <button className="text-pink-600 font-bold text-xs">Know More</button>
-                </div>
-
-                <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between">
-                    <span className="text-xs text-gray-500">Bought this for</span>
-                    <div className="flex gap-2">
-                        <button className="px-3 py-1 border border-gray-200 rounded-full text-xs font-bold text-gray-700">Rik</button>
-                        <button className="px-3 py-1 border border-gray-200 rounded-full text-xs font-bold text-gray-700">Add Profile</button>
-                    </div>
-                </div>
-            </div>
-
-            {/* Order Item 2 */}
-            <div className="bg-white mt-3 p-4">
-                <div className="flex items-center gap-3 mb-3">
-                    <div className="w-8 h-8 bg-gray-500 rounded-full flex items-center justify-center">
-                        <RefreshCw className="w-4 h-4 text-white" />
-                    </div>
-                    <div>
-                        <h3 className="font-bold text-gray-900 text-sm">Refund Credited</h3>
-                        <p className="text-xs text-gray-500 leading-tight">
-                            Your refund of <span className="font-bold text-gray-900">₹480.00</span> for the return has been processed successfully on Mon, 8 Sep. <span className="text-pink-600 font-bold">View Refund details</span>
-                        </p>
-                    </div>
-                </div>
-
-                <div className="bg-gray-50 p-3 rounded-lg flex gap-3">
-                    <img src="https://images.unsplash.com/photo-1599643478518-17488fbbcd75?ixlib=rb-4.0.3&auto=format&fit=crop&w=300&q=80" alt="Necklace" className="w-16 h-16 object-cover rounded" />
-                    <div className="flex-1">
-                        <h4 className="font-bold text-gray-900 text-sm">LITCHI</h4>
-                        <p className="text-xs text-gray-600">Silver-Toned Stainless Steel Necklace</p>
-                        <p className="text-xs text-gray-500 mt-1">Size: Onesize</p>
-                    </div>
-                    <ChevronRight className="w-5 h-5 text-gray-400" />
-                </div>
-            </div>
+  return (
+    <div className="min-h-screen bg-[#f7f7fa] pb-10">
+      <div className="border-b border-gray-200 bg-white">
+        <div className="mx-auto flex w-full max-w-5xl items-center justify-between px-4 py-4">
+          <div className="flex items-center gap-2">
+            <Package className="h-5 w-5 text-[--color-primary]" />
+            <h1 className="text-xl font-extrabold text-[--color-text-main]">My Orders</h1>
+          </div>
+          <Link
+            to="/products"
+            className="inline-flex items-center gap-1 rounded-full border border-gray-300 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:border-[--color-primary] hover:text-[--color-primary]"
+          >
+            Continue shopping
+            <ArrowUpRight className="h-3.5 w-3.5" />
+          </Link>
         </div>
-    );
+      </div>
+
+      <div className="mx-auto w-full max-w-5xl space-y-4 px-4 py-4">
+        {justPlaced ? (
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+            Order placed successfully
+            {orderNumberFromState ? ` • ${orderNumberFromState}` : ''}.
+          </div>
+        ) : null}
+
+        {sortedOrders.length === 0 ? (
+          <div className="rounded-2xl border border-gray-200 bg-white p-8 text-center shadow-sm">
+            <p className="text-base font-semibold text-[--color-text-main]">No orders yet</p>
+            <p className="mt-1 text-sm text-gray-500">Your placed orders will appear here.</p>
+            <Link
+              to="/products"
+              className="mt-4 inline-flex rounded-full bg-[--color-primary] px-4 py-2 text-sm font-semibold text-white hover:bg-[--color-primary-dark]"
+            >
+              Start Shopping
+            </Link>
+          </div>
+        ) : (
+          sortedOrders.map((order) => {
+            const meta = statusMeta(order?.status);
+            const Icon = meta.Icon;
+            const items = Array.isArray(order?.items) ? order.items : [];
+            const currency = order?.totals?.currency || 'INR';
+            const total = Number(order?.totals?.total ?? 0);
+            const createdOn = formatDate(order?.createdAt);
+            const shipping = order?.shipping || {};
+
+            return (
+              <Link
+                key={order.id}
+                to={`/orders/${order.id}`}
+                className="block rounded-2xl border border-gray-200 bg-white p-4 shadow-sm hover:shadow-md transition-shadow"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3 border-b border-gray-100 pb-3">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.15em] text-gray-500">
+                      Order #{order.number || order.id}
+                    </p>
+                    {createdOn ? (
+                      <p className="mt-1 text-xs text-gray-500">Placed on {createdOn}</p>
+                    ) : null}
+                  </div>
+                  <div
+                    className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold ${meta.tone}`}
+                  >
+                    <Icon className="h-3.5 w-3.5" />
+                    {meta.label}
+                  </div>
+                </div>
+
+                <div className="space-y-2 py-3">
+                  {items.slice(0, 4).map((item, index) => (
+                    <div key={`${order.id}-${index}`} className="flex items-center justify-between text-sm">
+                      <p className="min-w-0 flex-1 truncate text-gray-800">
+                        {item?.name || 'Item'} x{item?.quantity || 1}
+                      </p>
+                      <p className="font-medium text-gray-900">
+                        {formatMoney(
+                          Number(item?.price || 0) * Number(item?.quantity || 1),
+                          item?.currency || currency,
+                        )}
+                      </p>
+                    </div>
+                  ))}
+                  {items.length > 4 ? (
+                    <p className="text-xs text-gray-500">+{items.length - 4} more items</p>
+                  ) : null}
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 pt-3">
+                  <div className="text-sm text-gray-600">
+                    <p className="font-medium text-gray-900">{shipping?.fullName || 'Shipping details'}</p>
+                    <p className="max-w-[440px] truncate">{shipping?.address || ''}</p>
+                  </div>
+                  <p className="text-lg font-extrabold text-[--color-text-main]">
+                    {formatMoney(total, currency)}
+                  </p>
+                </div>
+              </Link>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
 }

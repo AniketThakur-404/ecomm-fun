@@ -22,7 +22,7 @@ const AdminLogin = () => {
 
     const result = await login(email.trim(), password);
     if (result.success) {
-      const redirect = location.state?.from || '/admin/products';
+      const redirect = location.state?.from || '/admin/orders';
       navigate(redirect, { replace: true });
     }
   };
@@ -31,9 +31,9 @@ const AdminLogin = () => {
     <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center px-6">
       <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-8 shadow-xl">
         <p className="text-xs uppercase tracking-[0.4em] text-slate-400">Admin Access</p>
-        <h1 className="text-2xl font-bold text-white mt-3">Sign in to manage products</h1>
+        <h1 className="text-2xl font-bold text-white mt-3">Sign in to manage commerce</h1>
         <p className="text-sm text-slate-400 mt-2">
-          Use your admin credentials to access the catalog workspace.
+          Use your admin credentials to access the full admin workspace.
         </p>
 
         {(localError || error) && (

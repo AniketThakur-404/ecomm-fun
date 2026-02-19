@@ -8,6 +8,7 @@ import {
   formatMoney,
   getProductImageUrl,
 } from '../lib/api';
+import { setCheckoutDraft } from '../lib/checkout';
 import { useCatalog } from '../contexts/catalog-context';
 import { useWishlist } from '../contexts/wishlist-context';
 import { useNotifications } from '../components/NotificationProvider';
@@ -206,9 +207,54 @@ const CartPage = () => {
     try {
       const missingHandles = selectedCartItems.filter((item) => item.loading || !item.product);
       if (missingHandles.length) {
-        setCheckoutError('Some products are unavailable. Please refresh your cart.');
+        setCheckoutError('Some products are still loading. Please wait a moment and try again.');
+        setIsCheckingOut(false);
         return;
       }
+
+      // Validate all items have valid prices
+      const invalidItems = selectedReadyItems.filter(
+        (item) => !item.unitPrice?.amount || item.unitPrice.amount <= 0,
+      );
+      if (invalidItems.length) {
+        setCheckoutError('Some items have invalid pricing. Please refresh your cart.');
+        setIsCheckingOut(false);
+        return;
+      }
+
+      const checkoutItems = selectedReadyItems.map((item) => ({
+        id: item.variant?.id ?? item.product?.id ?? item.id,
+        slug: item.handle,
+        sku: item.variant?.sku ?? null,
+        name: item.product?.title || item.handle,
+        vendor: item.product?.vendor || '',
+        size: item.size ?? null,
+        quantity: item.quantity ?? 1,
+        price: Number(item.unitPrice?.amount ?? 0),
+        currency: item.unitPrice?.currency || 'INR',
+        image: getProductImageUrl(item.product),
+      }));
+      const subtotal = checkoutItems.reduce(
+        (sum, entry) => sum + Number(entry.price || 0) * Number(entry.quantity || 0),
+        0,
+      );
+      const currency = checkoutItems[0]?.currency || 'INR';
+      const itemCount = checkoutItems.reduce(
+        (sum, entry) => sum + Number(entry.quantity || 0),
+        0,
+      );
+
+      setCheckoutDraft({
+        createdAt: new Date().toISOString(),
+        items: checkoutItems,
+        totals: {
+          subtotal,
+          shippingFee: 0,
+          total: subtotal,
+          currency,
+          itemCount,
+        },
+      });
 
       navigate('/checkout/address');
     } catch (error) {
@@ -437,8 +483,15 @@ const CartPage = () => {
       </div>
 
       {checkoutError && (
-        <div className="mx-4 mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
-          {checkoutError}
+        <div className="mx-4 mt-3 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 flex items-start gap-2">
+          <span className="text-red-600 font-bold">⚠</span>
+          <span>{checkoutError}</span>
+        </div>
+      )}
+
+      {readyItems.length > 0 && readyItems.some((item) => item.variant?.quantityAvailable !== null && item.variant.quantityAvailable <= 5) && (
+        <div className="mx-4 mt-3 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+          ⚠ Some items in your cart have low stock. Order soon to avoid disappointment.
         </div>
       )}
 

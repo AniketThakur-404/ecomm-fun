@@ -23,6 +23,11 @@ const AdminProducts = () => {
   const [deleteSummary, setDeleteSummary] = useState(null);
 
   const loadProducts = async (searchValue = '') => {
+    if (!token) {
+      setError('Authentication required. Please log in again.');
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError('');
     try {
@@ -33,7 +38,12 @@ const AdminProducts = () => {
       const items = payload?.data ?? payload ?? [];
       setProducts(items);
     } catch (err) {
-      setError(err?.message || 'Unable to load products.');
+      const errorMessage = err?.message || err?.payload?.error?.message || 'Unable to load products.';
+      if (err?.status === 401 || err?.status === 403) {
+        setError('Session expired. Please log in again.');
+      } else {
+        setError(errorMessage);
+      }
     } finally {
       setLoading(false);
     }

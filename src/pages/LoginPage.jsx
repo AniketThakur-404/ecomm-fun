@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import React, { useMemo, useState } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/auth-context';
 import { Mail, Lock, Eye, EyeOff, LogIn } from 'lucide-react';
 
@@ -11,6 +11,13 @@ const LoginPage = () => {
 
     const { login, loading, error } = useAuth();
     const navigate = useNavigate();
+    const location = useLocation();
+    const redirectPath = useMemo(() => {
+        const params = new URLSearchParams(location.search);
+        const redirect = params.get('redirect');
+        if (!redirect || !redirect.startsWith('/')) return '/profile';
+        return redirect;
+    }, [location.search]);
 
     const handlePasswordSubmit = async (e) => {
         e.preventDefault();
@@ -24,7 +31,7 @@ const LoginPage = () => {
 
         const result = await login(normalizedEmail, password);
         if (result.success) {
-            navigate('/profile');
+            navigate(redirectPath, { replace: true });
         }
     };
 

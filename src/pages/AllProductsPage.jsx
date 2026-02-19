@@ -303,8 +303,15 @@ const AllProductsPage = ({ initialCategory = 'all' }) => {
     setSearchParams(prev);
   };
 
+  const clearToneAndOccasionFilters = () => {
+    const prev = new URLSearchParams(searchParams);
+    prev.delete('skintone');
+    prev.delete('occasion');
+    setSearchParams(prev);
+  };
+
   return (
-    <div className="bg-white min-h-screen">
+    <div className="min-h-screen bg-[var(--color-bg-page)]">
       {/* Mobile Header */}
       <MobilePageHeader
         title={pageTitle}
@@ -312,7 +319,7 @@ const AllProductsPage = ({ initialCategory = 'all' }) => {
       />
 
       {/* Breadcrumb / Title Header - Desktop Only */}
-      <div className="hidden lg:flex site-shell py-6 flex-col gap-2">
+      <div className="site-shell hidden flex-col gap-2 py-6 md:flex">
         <div className="text-xs text-gray-500">
           Home / <span className="font-bold text-gray-800 capitalize">{pageTitle}</span>
         </div>
@@ -321,8 +328,58 @@ const AllProductsPage = ({ initialCategory = 'all' }) => {
         </h1>
       </div>
 
+      <div className="border-y border-[var(--color-border)] bg-[var(--color-bg-surface)] lg:hidden">
+        <div className="site-shell grid gap-2 py-3 sm:grid-cols-3">
+          <select
+            value={rawSkintone || 'all'}
+            onChange={(event) => updateFilter('skintone', event.target.value)}
+            className="rounded-md border border-[var(--color-border)] bg-white px-3 py-2 text-sm text-[var(--color-text-main)] focus:border-[var(--color-primary)] focus:outline-none"
+          >
+            <option value="all">Skin Tone</option>
+            <option value="fair">Fair</option>
+            <option value="neutral">Neutral</option>
+            <option value="dark">Dark</option>
+          </select>
+
+          <select
+            value={rawOccasion || 'all'}
+            onChange={(event) => updateFilter('occasion', event.target.value)}
+            className="rounded-md border border-[var(--color-border)] bg-white px-3 py-2 text-sm text-[var(--color-text-main)] focus:border-[var(--color-primary)] focus:outline-none"
+          >
+            <option value="all">Occasion</option>
+            <option value="date">Date Wear</option>
+            <option value="office">Office Wear</option>
+            <option value="puja">Puja/Festive</option>
+            <option value="party">Party</option>
+            <option value="casual">Casual</option>
+          </select>
+
+          <select
+            value={sortBy}
+            onChange={(event) => setSortBy(event.target.value)}
+            className="rounded-md border border-[var(--color-border)] bg-white px-3 py-2 text-sm text-[var(--color-text-main)] focus:border-[var(--color-primary)] focus:outline-none"
+          >
+            <option value="recommended">Recommended</option>
+            <option value="new">What's New</option>
+            <option value="popularity">Popularity</option>
+            <option value="price_low">Price: Low to High</option>
+            <option value="price_high">Price: High to Low</option>
+          </select>
+        </div>
+        {(skintoneFilter || occasionFilter) ? (
+          <div className="site-shell pb-3">
+            <button
+              onClick={clearToneAndOccasionFilters}
+              className="rounded-full border border-[var(--color-primary)] px-4 py-1.5 text-xs font-semibold text-[var(--color-primary)] hover:bg-[var(--color-primary)] hover:text-white"
+            >
+              Reset Filters
+            </button>
+          </div>
+        ) : null}
+      </div>
+
       {/* Filter Bar */}
-      <div className="border-t border-b border-gray-200 bg-white">
+      <div className="hidden border-y border-[var(--color-border)] bg-[var(--color-bg-surface)] lg:block">
         <div className="site-shell py-3 flex justify-between items-center gap-4">
           {/* Left: Filters */}
           <div className="flex items-center gap-2 md:gap-4 overflow-x-auto no-scrollbar whitespace-nowrap flex-1">
@@ -360,8 +417,8 @@ const AllProductsPage = ({ initialCategory = 'all' }) => {
             {/* Clear Filters */}
             {(skintoneFilter || occasionFilter) && (
               <button
-                onClick={() => setSearchParams(new URLSearchParams())}
-                className="text-xs text-red-600 font-bold hover:underline"
+                onClick={clearToneAndOccasionFilters}
+                className="text-xs font-bold text-[var(--color-primary)] hover:underline"
               >
                 Reset
               </button>
@@ -387,7 +444,7 @@ const AllProductsPage = ({ initialCategory = 'all' }) => {
       </div>
 
       {/* Product Grid */}
-      <div className="site-shell py-8">
+      <div className="site-shell py-6 md:py-8">
         {loading ? (
           <div className="flex justify-center py-20 text-gray-500">Loading products...</div>
         ) : shouldGroupBySkintone ? (
@@ -399,7 +456,7 @@ const AllProductsPage = ({ initialCategory = 'all' }) => {
                     <h2 className="text-xl font-bold text-gray-900">{group.label}</h2>
                     <span className="text-sm text-gray-500">{group.products.length} items</span>
                   </div>
-                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-x-6 gap-y-10">
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-6 sm:gap-x-4 sm:gap-y-8 md:grid-cols-3 lg:grid-cols-5 lg:gap-x-6 lg:gap-y-10">
                     {group.products.map((product, index) => (
                       <ProductCard key={product.handle || product.id || index} item={product} />
                     ))}
@@ -411,7 +468,7 @@ const AllProductsPage = ({ initialCategory = 'all' }) => {
             <div className="col-span-full text-center py-20 text-gray-500">No products found for this occasion.</div>
           )
         ) : (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-x-6 gap-y-10">
+          <div className="grid grid-cols-2 gap-x-3 gap-y-6 sm:gap-x-4 sm:gap-y-8 md:grid-cols-3 lg:grid-cols-5 lg:gap-x-6 lg:gap-y-10">
             {sortedProducts.length > 0 ? (
               sortedProducts.map((product, index) => (
                 <ProductCard key={product.handle || product.id || index} item={product} />
