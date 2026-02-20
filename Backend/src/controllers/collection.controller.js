@@ -246,6 +246,7 @@ exports.createCollection = async (req, res, next) => {
       },
       include: collectionInclude,
     });
+    collectionListCache.clear();
     res.status(201);
     return sendSuccess(res, collection);
   } catch (error) {
@@ -280,6 +281,7 @@ exports.updateCollection = async (req, res, next) => {
       },
       include: collectionInclude,
     });
+    collectionListCache.clear();
     return sendSuccess(res, collection);
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -299,6 +301,7 @@ exports.deleteCollection = async (req, res, next) => {
   try {
     const prisma = await getPrisma();
     await prisma.collection.delete({ where: { id: req.params.id } });
+    collectionListCache.clear();
     return res.status(204).send();
   } catch (error) {
     if (error.code === 'P2025') {
