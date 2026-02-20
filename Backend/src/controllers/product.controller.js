@@ -309,8 +309,9 @@ const normalizeProductInput = (raw = {}, { partial = false } = {}) => {
       : normalizeTags(raw.collectionHandles);
   }
 
-  const media = normalizeMedia(raw.media ?? raw.images);
-  if (media.length) normalized.media = media;
+  if (raw.media !== undefined || raw.images !== undefined) {
+    normalized.media = normalizeMedia(raw.media ?? raw.images);
+  }
 
   const options = normalizeOptions(raw.options);
   if (options) normalized.options = options;
