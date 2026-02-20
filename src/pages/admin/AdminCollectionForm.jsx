@@ -18,7 +18,7 @@ const slugify = (value) =>
 
 const AdminCollectionForm = () => {
   const { id } = useParams();
-  const isNew = id === 'new';
+  const isNew = !id || id === 'new';
   const { token } = useAdminAuth();
   const navigate = useNavigate();
 
