@@ -747,118 +747,172 @@ exports.getProduct = async (req, res, next) => {
 };
 
 const createProductRelations = async (tx, productId, payload) => {
-  const collectionIds = await resolveCollectionIds(tx, payload);
-  if (collectionIds.length) {
-    await tx.productCollection.createMany({
-      data: collectionIds.map((collectionId, index) => ({
-        productId,
-        collectionId,
-        position: index + 1,
-      })),
-    });
-  }
+  try {
+    console.log('[createProductRelations] START');
 
-  if (payload.media?.length) {
-    await tx.productMedia.createMany({
-      data: payload.media.map((media, index) => ({
-        productId,
-        url: media.url,
-        alt: media.alt ?? null,
-        type: media.type ?? 'IMAGE',
-        position: media.position ?? index,
-      })),
-    });
-  }
+    // 1. Collections
+    try {
+      console.log('[createProductRelations] Resolving collection IDs');
+      const collectionIds = await resolveCollectionIds(tx, payload);
+      if (collectionIds.length) {
+        console.log('[createProductRelations] Creating collections:', collectionIds.length);
+        await tx.productCollection.createMany({
+          data: collectionIds.map((collectionId, index) => ({
+            productId,
+            collectionId,
+            position: index + 1,
+          })),
+        });
+      }
+    } catch (e) {
+      console.error('[createProductRelations] Collection error:', e);
+      throw new Error(`Collection creation failed: ${e.message}`);
+    }
 
-  if (payload.options?.length) {
-    await tx.productOption.createMany({
-      data: payload.options.map((option, index) => ({
-        productId,
-        name: option.name,
-        values: option.values,
-        position: index + 1,
-      })),
-    });
-  }
+    // 2. Media
+    try {
+      if (payload.media?.length) {
+        console.log('[createProductRelations] Creating media:', payload.media.length);
+        await tx.productMedia.createMany({
+          data: payload.media.map((media, index) => ({
+            productId,
+            url: media.url,
+            alt: media.alt ?? null,
+            type: media.type ?? 'IMAGE',
+            position: media.position ?? index,
+          })),
+        });
+      }
+    } catch (e) {
+      console.error('[createProductRelations] Media error:', e);
+      throw new Error(`Media creation failed: ${e.message}`);
+    }
 
-  const mediaRecords = payload.media?.length
-    ? await tx.productMedia.findMany({ where: { productId } })
-    : [];
-  const mediaByUrl = new Map(mediaRecords.map((record) => [record.url, record.id]));
+    // 3. Options
+    let optionOrder = [];
+    try {
+      if (payload.options?.length) {
+        console.log('[createProductRelations] Creating options:', payload.options.length);
+        await tx.productOption.createMany({
+          data: payload.options.map((option, index) => ({
+            productId,
+            name: option.name,
+            values: option.values,
+            position: index + 1,
+          })),
+        });
+        optionOrder = payload.options;
+      }
+    } catch (e) {
+      console.error('[createProductRelations] Option error:', e);
+      throw new Error(`Option creation failed: ${e.message}`);
+    }
 
-  const optionOrder = payload.options || [];
+    // Resolve media map for variants
+    let mediaByUrl = new Map();
+    try {
+      const mediaRecords = payload.media?.length
+        ? await tx.productMedia.findMany({ where: { productId } })
+        : [];
+      mediaByUrl = new Map(mediaRecords.map((record) => [record.url, record.id]));
+    } catch (e) {
+      console.error('[createProductRelations] Media fetch error:', e);
+      // Non-fatal, just log
+    }
 
-  if (payload.variants?.length) {
-    for (const [index, variant] of payload.variants.entries()) {
-      const created = await tx.productVariant.create({
-        data: {
-          productId,
-          title: buildVariantTitle(variant, optionOrder),
-          position: index + 1,
-          sku: variant.sku ?? null,
-          barcode: variant.barcode ?? null,
-          price: toDecimalString(variant.price),
-          compareAtPrice: toDecimalString(variant.compareAtPrice),
-          costPerItem: toDecimalString(variant.costPerItem),
-          unitPrice: toDecimalString(variant.unitPrice),
-          unitPriceMeasurement: variant.unitPriceMeasurement,
-          taxable: variant.taxable ?? true,
-          trackInventory: variant.trackInventory ?? true,
-          inventoryPolicy: variant.inventoryPolicy ?? 'DENY',
-          requiresShipping: variant.requiresShipping ?? true,
-          weight: toDecimalString(variant.weight),
-          weightUnit: variant.weightUnit ?? null,
-          originCountryCode: variant.originCountryCode ?? null,
-          hsCode: variant.hsCode ?? null,
-          optionValues: variant.optionValues ?? undefined,
-          imageId: variant.imageUrl ? mediaByUrl.get(variant.imageUrl) : null,
-        },
-      });
+    // 4. Variants
+    try {
+      if (payload.variants?.length) {
+        console.log('[createProductRelations] Creating variants:', payload.variants.length);
+        for (const [index, variant] of payload.variants.entries()) {
+          const imageId = variant.imageUrl ? mediaByUrl.get(variant.imageUrl) : null;
 
-      if (variant.inventory?.available !== undefined && variant.trackInventory !== false) {
-        const locationName = variant.inventory.location || 'Default';
-        const location = await ensureLocation(tx, locationName);
-        if (location) {
-          await tx.inventoryLevel.create({
+          const created = await tx.productVariant.create({
             data: {
-              variantId: created.id,
-              locationId: location.id,
-              available: variant.inventory.available ?? 0,
-              onHand: variant.inventory.available ?? 0,
-              committed: 0,
-              unavailable: 0,
+              productId,
+              title: buildVariantTitle(variant, optionOrder),
+              position: index + 1,
+              sku: variant.sku ?? null,
+              barcode: variant.barcode ?? null,
+              price: toDecimalString(variant.price),
+              compareAtPrice: toDecimalString(variant.compareAtPrice),
+              costPerItem: toDecimalString(variant.costPerItem),
+              unitPrice: toDecimalString(variant.unitPrice),
+              unitPriceMeasurement: variant.unitPriceMeasurement,
+              taxable: variant.taxable ?? true,
+              trackInventory: variant.trackInventory ?? true,
+              inventoryPolicy: variant.inventoryPolicy ?? 'DENY',
+              requiresShipping: variant.requiresShipping ?? true,
+              weight: toDecimalString(variant.weight),
+              weightUnit: variant.weightUnit ?? null,
+              originCountryCode: variant.originCountryCode ?? null,
+              hsCode: variant.hsCode ?? null,
+              optionValues: variant.optionValues ?? undefined,
+              imageId: imageId ?? undefined, // Explicit undefined if null/undefined
             },
           });
+
+          if (variant.inventory?.available !== undefined && variant.trackInventory !== false) {
+            const locationName = variant.inventory.location || 'Default';
+            const location = await ensureLocation(tx, locationName);
+            if (location) {
+              await tx.inventoryLevel.create({
+                data: {
+                  variantId: created.id,
+                  locationId: location.id,
+                  available: variant.inventory.available ?? 0,
+                  onHand: variant.inventory.available ?? 0,
+                  committed: 0,
+                  unavailable: 0,
+                },
+              });
+            }
+          }
+
+          if (variant.metafields?.length) {
+            await tx.variantMetafield.createMany({
+              data: variant.metafields.map((field) => ({
+                variantId: created.id,
+                namespace: field.namespace,
+                key: field.key,
+                type: field.type,
+                value: field.value,
+                description: field.description ?? null,
+              })),
+            });
+          }
         }
       }
+    } catch (e) {
+      console.error('[createProductRelations] Variant error:', e);
+      throw new Error(`Variant creation failed: ${e.message}`);
+    }
 
-      if (variant.metafields?.length) {
-        await tx.variantMetafield.createMany({
-          data: variant.metafields.map((field) => ({
-            variantId: created.id,
+    // 5. Metafields
+    try {
+      if (payload.metafields?.length) {
+        console.log('[createProductRelations] Creating metafields:', payload.metafields.length);
+        await tx.productMetafield.createMany({
+          data: payload.metafields.map((field) => ({
+            productId,
             namespace: field.namespace,
             key: field.key,
             type: field.type,
             value: field.value,
             description: field.description ?? null,
+            set: field.set ?? 'PRODUCT',
           })),
         });
       }
+    } catch (e) {
+      console.error('[createProductRelations] Metafield error:', e);
+      throw new Error(`Metafield creation failed: ${e.message}`);
     }
-  }
 
-  if (payload.metafields?.length) {
-    await tx.productMetafield.createMany({
-      data: payload.metafields.map((field) => ({
-        productId,
-        namespace: field.namespace,
-        key: field.key,
-        type: field.type,
-        value: field.value,
-        description: field.description ?? null,
-        set: field.set ?? 'PRODUCT',
-      })),
-    });
+    console.log('[createProductRelations] DONE');
+  } catch (error) {
+    console.error('[createProductRelations] Fatal error:', error);
+    throw error; // Re-throw to be caught by updateProduct
   }
 };
 
@@ -994,7 +1048,11 @@ exports.updateProduct = async (req, res, next) => {
       return sendError(res, 400, `Invalid reference: ${error.meta?.field_name || 'unknown field'}`);
     }
     console.error('[updateProduct] Error:', error.message, error.code, error.stack);
-    return sendError(res, 500, `Update failed: ${error.message || 'Unknown server error'}`);
+    return sendError(res, 500, `Update failed: ${error.message || 'Unknown server error'}`, {
+      stack: error.stack,
+      code: error.code,
+      meta: error.meta,
+    });
   }
 };
 
