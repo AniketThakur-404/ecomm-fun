@@ -909,10 +909,13 @@ exports.createProduct = async (req, res, next) => {
 
 exports.updateProduct = async (req, res, next) => {
   try {
+    console.log('[updateProduct] START for id:', req.params.id);
     const payload = parseProductInput(req.body, { partial: true });
+    console.log('[updateProduct] Parsed payload keys:', Object.keys(payload));
     const prisma = await getPrisma();
 
     const product = await prisma.$transaction(async (tx) => {
+      console.log('[updateProduct] Step 1: Updating product base fields');
       const updated = await tx.product.update({
         where: { id: req.params.id },
         data: {
@@ -931,33 +934,51 @@ exports.updateProduct = async (req, res, next) => {
           publishedAt: payload.publishedAt ?? undefined,
         },
       });
+      console.log('[updateProduct] Step 1 done. Product id:', updated.id);
 
       if (payload.collections || payload.collectionHandles) {
+        console.log('[updateProduct] Step 2: Deleting old ProductCollection records');
         await tx.productCollection.deleteMany({ where: { productId: updated.id } });
+        console.log('[updateProduct] Step 2 done');
       }
       if (payload.media) {
+        console.log('[updateProduct] Step 3: Deleting old ProductMedia records, count:', payload.media.length);
         await tx.productMedia.deleteMany({ where: { productId: updated.id } });
+        console.log('[updateProduct] Step 3 done');
       }
       if (payload.options) {
+        console.log('[updateProduct] Step 4: Deleting old ProductOption records, count:', payload.options.length);
         await tx.productOption.deleteMany({ where: { productId: updated.id } });
+        console.log('[updateProduct] Step 4 done');
       }
       if (payload.variants) {
+        console.log('[updateProduct] Step 5: Deleting old variants/inventory, count:', payload.variants.length);
         await tx.inventoryLevel.deleteMany({ where: { variant: { productId: updated.id } } });
         await tx.productVariant.deleteMany({ where: { productId: updated.id } });
+        console.log('[updateProduct] Step 5 done');
       }
       if (payload.metafields) {
+        console.log('[updateProduct] Step 6: Deleting old metafields, count:', payload.metafields.length);
         await tx.productMetafield.deleteMany({ where: { productId: updated.id } });
+        console.log('[updateProduct] Step 6 done');
       }
 
+      console.log('[updateProduct] Step 7: Creating product relations');
       await createProductRelations(tx, updated.id, payload);
+      console.log('[updateProduct] Step 7 done');
 
-      return tx.product.findUnique({
+      console.log('[updateProduct] Step 8: Fetching final product');
+      const result = await tx.product.findUnique({
         where: { id: updated.id },
         include: productInclude,
       });
+      console.log('[updateProduct] Step 8 done');
+      return result;
     });
 
+    console.log('[updateProduct] Transaction complete, sending response');
     return sendSuccess(res, toProductResponse(product));
+
   } catch (error) {
     if (error instanceof z.ZodError) {
       return sendError(res, 400, error.errors[0]?.message || 'Invalid payload');
