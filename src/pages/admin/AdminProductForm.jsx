@@ -861,23 +861,79 @@ const AdminProductForm = () => {
 
             <div>
               <label className="text-xs uppercase tracking-[0.3em] text-slate-400">Collections</label>
-              <select
-                multiple
-                value={form.collectionIds}
-                onChange={(event) =>
-                  handleFieldChange(
-                    'collectionIds',
-                    Array.from(event.target.selectedOptions).map((option) => option.value),
-                  )
-                }
-                className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white focus:border-emerald-400 focus:outline-none"
-              >
-                {collections.map((collection) => (
-                  <option key={collection.id} value={collection.id}>
-                    {collection.title}
-                  </option>
-                ))}
-              </select>
+              {collections.length > 0 ? (
+                <div className="mt-2 rounded-lg border border-slate-700 bg-slate-950 overflow-hidden">
+                  {/* Search filter */}
+                  <div className="border-b border-slate-800 px-3 py-2">
+                    <input
+                      type="text"
+                      placeholder="Search collections…"
+                      onChange={(e) => {
+                        const el = e.target.closest('.rounded-lg')?.querySelector('[data-collection-list]');
+                        if (!el) return;
+                        const query = e.target.value.toLowerCase();
+                        el.querySelectorAll('[data-collection-item]').forEach((item) => {
+                          item.style.display = item.dataset.collectionItem.toLowerCase().includes(query) ? '' : 'none';
+                        });
+                      }}
+                      className="w-full rounded border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:border-emerald-400 focus:outline-none"
+                    />
+                  </div>
+                  {/* Selected count */}
+                  <div className="flex items-center justify-between border-b border-slate-800 px-3 py-1.5">
+                    <span className="text-[11px] text-slate-500">
+                      {form.collectionIds.length} of {collections.length} selected
+                    </span>
+                    {form.collectionIds.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => handleFieldChange('collectionIds', [])}
+                        className="text-[11px] text-rose-400 hover:text-rose-300"
+                      >
+                        Clear all
+                      </button>
+                    )}
+                  </div>
+                  {/* Collection list */}
+                  <div data-collection-list className="max-h-52 overflow-y-auto divide-y divide-slate-800/50">
+                    {collections.map((col) => {
+                      const isSelected = form.collectionIds.includes(col.id);
+                      return (
+                        <label
+                          key={col.id}
+                          data-collection-item={col.title}
+                          className={`flex items-center gap-3 px-3 py-2.5 cursor-pointer transition-colors hover:bg-slate-800/50 ${isSelected ? 'bg-emerald-500/5' : ''}`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => {
+                              setForm((prev) => ({
+                                ...prev,
+                                collectionIds: isSelected
+                                  ? prev.collectionIds.filter((id) => id !== col.id)
+                                  : [...prev.collectionIds, col.id],
+                              }));
+                            }}
+                            className="h-4 w-4 rounded border-slate-600 bg-slate-900 text-emerald-500 focus:ring-emerald-400 focus:ring-offset-0 accent-emerald-500"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <span className="text-sm text-white">{col.title}</span>
+                            {col.handle && (
+                              <span className="ml-2 text-[10px] text-slate-500">/{col.handle}</span>
+                            )}
+                          </div>
+                          {isSelected && (
+                            <span className="shrink-0 h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                          )}
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : (
+                <p className="mt-2 text-xs text-slate-500 italic">No collections found. Create collections first.</p>
+              )}
             </div>
 
             <div className="rounded-xl border border-slate-800 bg-slate-900 p-4 space-y-4">
