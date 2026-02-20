@@ -83,6 +83,8 @@ const collectionListSelect = {
   imageUrl: true,
   parentId: true,
   publishedAt: true,
+  parent: { select: { id: true, title: true, handle: true } },
+  _count: { select: { products: true } },
 };
 
 const collectionDetailSelect = {
@@ -98,6 +100,8 @@ const collectionDetailSelect = {
   parentId: true,
   createdAt: true,
   updatedAt: true,
+  parent: { select: { id: true, title: true, handle: true } },
+  children: { select: { id: true, title: true, handle: true } },
 };
 
 const collectionCompactSelect = collectionListSelect;

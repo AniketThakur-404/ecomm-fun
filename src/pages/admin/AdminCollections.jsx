@@ -98,35 +98,76 @@ const AdminCollections = () => {
                 </td>
               </tr>
             ) : (
-              collections.map((collection) => (
-                <tr key={collection.id} className="border-t border-slate-800">
-                  <td className="px-6 py-4">
-                    <div className="font-semibold text-slate-100">{collection.title}</div>
-                  </td>
-                  <td className="px-6 py-4 text-slate-300">{collection.handle}</td>
-                  <td className="px-6 py-4 text-slate-300">
-                    {collection.parent?.title || '—'}
-                  </td>
-                  <td className="px-6 py-4 text-slate-300">
-                    {collection._count?.products ?? 0}
-                  </td>
-                  <td className="px-6 py-4 text-right space-x-2">
-                    <Link
-                      to={`/admin/collections/${collection.id}`}
-                      className="inline-flex items-center rounded-lg border border-slate-700 px-3 py-1 text-xs font-semibold text-slate-200 hover:bg-slate-800"
-                    >
-                      Edit
-                    </Link>
-                    <button
-                      type="button"
-                      onClick={() => handleDelete(collection.id)}
-                      className="inline-flex items-center rounded-lg border border-rose-500/40 px-3 py-1 text-xs font-semibold text-rose-200 hover:bg-rose-500/10"
-                    >
-                      Delete
-                    </button>
-                  </td>
-                </tr>
-              ))
+              (() => {
+                // Group: parents first, then children under their parent
+                const parents = collections.filter((c) => !c.parentId);
+                const childMap = {};
+                collections.forEach((c) => {
+                  if (c.parentId) {
+                    if (!childMap[c.parentId]) childMap[c.parentId] = [];
+                    childMap[c.parentId].push(c);
+                  }
+                });
+                const ordered = [];
+                parents.forEach((p) => {
+                  ordered.push({ ...p, _isParent: true });
+                  (childMap[p.id] || []).forEach((child) =>
+                    ordered.push({ ...child, _isChild: true }),
+                  );
+                });
+                // Add any orphaned children (parentId set but parent not in list)
+                collections.forEach((c) => {
+                  if (c.parentId && !parents.find((p) => p.id === c.parentId)) {
+                    if (!ordered.find((o) => o.id === c.id)) {
+                      ordered.push({ ...c, _isChild: true });
+                    }
+                  }
+                });
+
+                return ordered.map((collection) => (
+                  <tr key={collection.id} className="border-t border-slate-800">
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-2">
+                        {collection._isChild && (
+                          <span className="text-slate-600 text-xs">└─</span>
+                        )}
+                        <div>
+                          <div className="font-semibold text-slate-100">
+                            {collection.title}
+                          </div>
+                          {collection._isParent && childMap[collection.id]?.length > 0 && (
+                            <span className="text-[10px] text-emerald-400/70">
+                              {childMap[collection.id].length} sub-collection{childMap[collection.id].length !== 1 ? 's' : ''}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-slate-300">{collection.handle}</td>
+                    <td className="px-6 py-4 text-slate-300">
+                      {collection.parent?.title || '—'}
+                    </td>
+                    <td className="px-6 py-4 text-slate-300">
+                      {collection._count?.products ?? 0}
+                    </td>
+                    <td className="px-6 py-4 text-right space-x-2">
+                      <Link
+                        to={`/admin/collections/${collection.id}`}
+                        className="inline-flex items-center rounded-lg border border-slate-700 px-3 py-1 text-xs font-semibold text-slate-200 hover:bg-slate-800"
+                      >
+                        Edit
+                      </Link>
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(collection.id)}
+                        className="inline-flex items-center rounded-lg border border-rose-500/40 px-3 py-1 text-xs font-semibold text-rose-200 hover:bg-rose-500/10"
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                ));
+              })()
             )}
           </tbody>
         </table>

@@ -153,13 +153,18 @@ const AdminCollectionForm = () => {
                 onChange={(event) => handleFieldChange('parentId', event.target.value)}
                 className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white focus:border-emerald-400 focus:outline-none"
               >
-                <option value="">No parent</option>
-                {parentOptions.map((collection) => (
-                  <option key={collection.id} value={collection.id}>
-                    {collection.title}
-                  </option>
-                ))}
+                <option value="">No parent (top-level collection)</option>
+                {parentOptions
+                  .filter((c) => !c.parentId)
+                  .map((collection) => (
+                    <option key={collection.id} value={collection.id}>
+                      {collection.title}
+                    </option>
+                  ))}
               </select>
+              <p className="mt-1 text-[10px] text-slate-500">
+                Set a parent to make this a sub-collection (e.g. "Fair Skin" under "Skin Tone").
+              </p>
             </div>
 
             <div>
@@ -184,6 +189,31 @@ const AdminCollectionForm = () => {
                 placeholder="https://"
               />
             </div>
+
+            {/* Show sub-collections when editing a parent */}
+            {!isNew && (() => {
+              const children = collections.filter((c) => c.parentId === id);
+              if (!children.length) return null;
+              return (
+                <div className="rounded-lg border border-slate-700 bg-slate-900/50 p-3 space-y-2">
+                  <p className="text-xs uppercase tracking-[0.2em] text-slate-400">
+                    Sub-Collections ({children.length})
+                  </p>
+                  <div className="space-y-1">
+                    {children.map((child) => (
+                      <Link
+                        key={child.id}
+                        to={`/admin/collections/${child.id}`}
+                        className="flex items-center gap-2 rounded px-2 py-1.5 text-sm text-slate-300 hover:bg-slate-800 hover:text-white transition"
+                      >
+                        <span className="text-slate-600 text-xs">└─</span>
+                        {child.title}
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
           </div>
 
           <div className="space-y-4">
