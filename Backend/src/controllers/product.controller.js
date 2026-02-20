@@ -972,8 +972,8 @@ exports.updateProduct = async (req, res, next) => {
       console.error('[updateProduct] Foreign key constraint failed:', error.meta);
       return sendError(res, 400, `Invalid reference: ${error.meta?.field_name || 'unknown field'}`);
     }
-    console.error('[updateProduct] Unexpected error:', error.message, error.code, error.stack?.slice(0, 500));
-    return next(error);
+    console.error('[updateProduct] Error:', error.message, error.code, error.stack);
+    return sendError(res, 500, `Update failed: ${error.message || 'Unknown server error'}`);
   }
 };
 
