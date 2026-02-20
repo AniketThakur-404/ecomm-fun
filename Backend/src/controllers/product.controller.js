@@ -968,6 +968,11 @@ exports.updateProduct = async (req, res, next) => {
     if (error.code === 'P2002') {
       return sendError(res, 409, 'Product handle already exists');
     }
+    if (error.code === 'P2003') {
+      console.error('[updateProduct] Foreign key constraint failed:', error.meta);
+      return sendError(res, 400, `Invalid reference: ${error.meta?.field_name || 'unknown field'}`);
+    }
+    console.error('[updateProduct] Unexpected error:', error.message, error.code, error.stack?.slice(0, 500));
     return next(error);
   }
 };
