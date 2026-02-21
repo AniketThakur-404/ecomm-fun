@@ -524,10 +524,8 @@ const AdminCollectionForm = () => {
                 {filteredProducts.map((product) => {
                   const selected = selectedProductIds.includes(product.id);
                   return (
-                    <button
+                    <label
                       key={product.id}
-                      type="button"
-                      onClick={() => toggleProductSelection(product.id)}
                       className={`w-full text-left px-4 py-3 flex items-center gap-3 transition ${
                         selected ? 'bg-emerald-500/10' : 'hover:bg-slate-900'
                       }`}
@@ -542,7 +540,7 @@ const AdminCollectionForm = () => {
                         <p className="text-sm text-white truncate">{product.title || 'Untitled product'}</p>
                         <p className="text-xs text-slate-400 truncate">{product.handle || 'no-handle'}</p>
                       </div>
-                    </button>
+                    </label>
                   );
                 })}
               </div>
