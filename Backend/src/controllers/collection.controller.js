@@ -26,6 +26,8 @@ const baseCollectionSchema = z.object({
   publishedAt: z.coerce.date().optional(),
   parentId: z.string().optional().nullable(),
   parentHandle: z.string().optional(),
+  productIds: z.array(z.string().min(1)).optional(),
+  productHandles: z.array(z.string().min(1)).optional(),
 });
 
 const normalizeCollectionInput = (raw = {}, { partial = false } = {}) => {
@@ -58,6 +60,30 @@ const normalizeCollectionInput = (raw = {}, { partial = false } = {}) => {
   if (raw.parentId !== undefined) normalized.parentId = raw.parentId || null;
   if (raw.parentHandle !== undefined) {
     normalized.parentHandle = String(raw.parentHandle).trim();
+  }
+
+  if (raw.productIds !== undefined) {
+    if (Array.isArray(raw.productIds)) {
+      normalized.productIds = raw.productIds.map((id) => String(id).trim()).filter(Boolean);
+    } else if (typeof raw.productIds === 'string') {
+      normalized.productIds = raw.productIds
+        .split(',')
+        .map((id) => id.trim())
+        .filter(Boolean);
+    }
+  }
+
+  if (raw.productHandles !== undefined) {
+    if (Array.isArray(raw.productHandles)) {
+      normalized.productHandles = raw.productHandles
+        .map((handle) => String(handle).trim())
+        .filter(Boolean);
+    } else if (typeof raw.productHandles === 'string') {
+      normalized.productHandles = raw.productHandles
+        .split(',')
+        .map((handle) => handle.trim())
+        .filter(Boolean);
+    }
   }
 
   return normalized;
@@ -102,6 +128,21 @@ const collectionDetailSelect = {
   updatedAt: true,
   parent: { select: { id: true, title: true, handle: true } },
   children: { select: { id: true, title: true, handle: true } },
+  products: {
+    select: {
+      position: true,
+      product: {
+        select: {
+          id: true,
+          title: true,
+          handle: true,
+          status: true,
+          vendor: true,
+        },
+      },
+    },
+    orderBy: { position: 'asc' },
+  },
 };
 
 const collectionCompactSelect = collectionListSelect;
@@ -114,6 +155,22 @@ const resolveParentId = async (prisma, payload) => {
     select: { id: true },
   });
   return parent?.id ?? null;
+};
+
+const resolveProductIds = async (prisma, payload) => {
+  const ids = Array.isArray(payload.productIds) ? payload.productIds : [];
+  const handles = Array.isArray(payload.productHandles) ? payload.productHandles : [];
+
+  if (!handles.length) {
+    return Array.from(new Set(ids));
+  }
+
+  const found = await prisma.product.findMany({
+    where: { handle: { in: handles } },
+    select: { id: true },
+  });
+
+  return Array.from(new Set([...ids, ...found.map((item) => item.id)]));
 };
 
 /* ── In-memory cache for public collection lists ── */
@@ -231,21 +288,40 @@ exports.createCollection = async (req, res, next) => {
     const payload = parseCollectionInput(req.body);
     const prisma = await getPrisma();
     const parentId = await resolveParentId(prisma, payload);
+    const productIds = await resolveProductIds(prisma, payload);
 
-    const collection = await prisma.collection.create({
-      data: {
-        title: payload.title,
-        handle: payload.handle,
-        descriptionHtml: payload.descriptionHtml,
-        imageUrl: payload.imageUrl,
-        type: payload.type ?? 'MANUAL',
-        rules: payload.rules,
-        templateSuffix: payload.templateSuffix,
-        publishedAt: payload.publishedAt ?? null,
-        parentId,
-      },
-      include: collectionInclude,
+    const collection = await prisma.$transaction(async (tx) => {
+      const created = await tx.collection.create({
+        data: {
+          title: payload.title,
+          handle: payload.handle,
+          descriptionHtml: payload.descriptionHtml,
+          imageUrl: payload.imageUrl,
+          type: payload.type ?? 'MANUAL',
+          rules: payload.rules,
+          templateSuffix: payload.templateSuffix,
+          publishedAt: payload.publishedAt ?? null,
+          parentId,
+        },
+      });
+
+      if (productIds.length > 0) {
+        await tx.productCollection.createMany({
+          data: productIds.map((productId, index) => ({
+            productId,
+            collectionId: created.id,
+            position: index,
+          })),
+          skipDuplicates: true,
+        });
+      }
+
+      return tx.collection.findUnique({
+        where: { id: created.id },
+        include: collectionInclude,
+      });
     });
+
     collectionListCache.clear();
     res.status(201);
     return sendSuccess(res, collection);
@@ -265,22 +341,52 @@ exports.updateCollection = async (req, res, next) => {
     const payload = parseCollectionInput(req.body, { partial: true });
     const prisma = await getPrisma();
     const parentId = await resolveParentId(prisma, payload);
+    const shouldSyncProducts =
+      Object.prototype.hasOwnProperty.call(payload, 'productIds') ||
+      Object.prototype.hasOwnProperty.call(payload, 'productHandles');
+    const productIds = shouldSyncProducts
+      ? await resolveProductIds(prisma, payload)
+      : [];
 
-    const collection = await prisma.collection.update({
-      where: { id: req.params.id },
-      data: {
-        title: payload.title,
-        handle: payload.handle,
-        descriptionHtml: payload.descriptionHtml,
-        imageUrl: payload.imageUrl,
-        type: payload.type,
-        rules: payload.rules,
-        templateSuffix: payload.templateSuffix,
-        publishedAt: payload.publishedAt ?? undefined,
-        parentId: parentId ?? payload.parentId,
-      },
-      include: collectionInclude,
+    const collection = await prisma.$transaction(async (tx) => {
+      const updated = await tx.collection.update({
+        where: { id: req.params.id },
+        data: {
+          title: payload.title,
+          handle: payload.handle,
+          descriptionHtml: payload.descriptionHtml,
+          imageUrl: payload.imageUrl,
+          type: payload.type,
+          rules: payload.rules,
+          templateSuffix: payload.templateSuffix,
+          publishedAt: payload.publishedAt ?? undefined,
+          parentId: parentId ?? payload.parentId,
+        },
+      });
+
+      if (shouldSyncProducts) {
+        await tx.productCollection.deleteMany({
+          where: { collectionId: updated.id },
+        });
+
+        if (productIds.length > 0) {
+          await tx.productCollection.createMany({
+            data: productIds.map((productId, index) => ({
+              productId,
+              collectionId: updated.id,
+              position: index,
+            })),
+            skipDuplicates: true,
+          });
+        }
+      }
+
+      return tx.collection.findUnique({
+        where: { id: updated.id },
+        include: collectionInclude,
+      });
     });
+
     collectionListCache.clear();
     return sendSuccess(res, collection);
   } catch (error) {

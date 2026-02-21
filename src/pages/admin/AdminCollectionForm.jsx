@@ -1,9 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   adminCreateCollection,
   adminFetchCollection,
   adminFetchCollections,
+  adminFetchProducts,
   adminUpdateCollection,
 } from '../../lib/api';
 import { useAdminAuth } from '../../contexts/admin-auth-context';
@@ -16,6 +17,65 @@ const slugify = (value) =>
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
 
+const SKINTONE_OPTIONS = [
+  { value: 'fair', label: 'Fair' },
+  { value: 'neutral', label: 'Neutral' },
+  { value: 'dark', label: 'Dark' },
+];
+
+const OCCASION_OPTIONS = [
+  { value: 'date', label: 'Date Wear' },
+  { value: 'office', label: 'Office Wear' },
+  { value: 'puja', label: 'Puja/Festive' },
+  { value: 'party', label: 'Party' },
+  { value: 'casual', label: 'Casual' },
+];
+
+const isObject = (value) => Boolean(value && typeof value === 'object' && !Array.isArray(value));
+
+const normalizeChoiceList = (value, allowedValues) => {
+  const allowed = new Set(allowedValues.map((item) => item.value));
+  const list = Array.isArray(value)
+    ? value
+    : typeof value === 'string'
+      ? value.split(',')
+      : [];
+  return Array.from(
+    new Set(
+      list
+        .map((item) => String(item).trim().toLowerCase())
+        .filter((item) => allowed.has(item)),
+    ),
+  );
+};
+
+const readFlowConfig = (rules) => {
+  const sourceRules = isObject(rules) ? rules : {};
+  const flow = isObject(sourceRules.storefrontFlow) ? sourceRules.storefrontFlow : {};
+  const flowSkintones = normalizeChoiceList(flow.skintones, SKINTONE_OPTIONS);
+  const flowOccasions = normalizeChoiceList(flow.occasions, OCCASION_OPTIONS);
+  return {
+    rules: sourceRules,
+    flowEnabled: flow.enabled !== false && (flowSkintones.length > 0 || flowOccasions.length > 0),
+    flowSkintones,
+    flowOccasions,
+  };
+};
+
+const buildRulesPayload = ({ rules, flowEnabled, flowSkintones, flowOccasions }) => {
+  const nextRules = isObject(rules) ? { ...rules } : {};
+  if (!flowEnabled) {
+    delete nextRules.storefrontFlow;
+  } else {
+    nextRules.storefrontFlow = {
+      enabled: true,
+      skintones: flowSkintones,
+      occasions: flowOccasions,
+    };
+  }
+  return Object.keys(nextRules).length ? nextRules : null;
+};
+
 const AdminCollectionForm = () => {
   const { id } = useParams();
   const isNew = !id || id === 'new';
@@ -26,6 +86,10 @@ const AdminCollectionForm = () => {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [collections, setCollections] = useState([]);
+  const [products, setProducts] = useState([]);
+  const [productsLoading, setProductsLoading] = useState(false);
+  const [productSearch, setProductSearch] = useState('');
+  const [selectedProductIds, setSelectedProductIds] = useState([]);
   const [form, setForm] = useState({
     title: '',
     handle: '',
@@ -33,6 +97,10 @@ const AdminCollectionForm = () => {
     imageUrl: '',
     parentId: '',
     type: 'MANUAL',
+    rules: {},
+    flowEnabled: false,
+    flowSkintones: [],
+    flowOccasions: [],
   });
 
   useEffect(() => {
@@ -43,11 +111,67 @@ const AdminCollectionForm = () => {
   }, [token]);
 
   useEffect(() => {
-    if (isNew || !id || !token) return;
+    if (!token) return;
+    let cancelled = false;
+
+    const loadAllProducts = async () => {
+      setProductsLoading(true);
+      try {
+        const allProducts = [];
+        const seen = new Set();
+        let page = 1;
+        const limit = 200;
+
+        while (true) {
+          const payload = await adminFetchProducts(token, { page, limit, include: 'compact' });
+          const items = Array.isArray(payload?.data)
+            ? payload.data
+            : (Array.isArray(payload) ? payload : []);
+
+          items.forEach((item) => {
+            if (!item?.id || seen.has(item.id)) return;
+            seen.add(item.id);
+            allProducts.push(item);
+          });
+
+          const total = Number(payload?.meta?.total);
+          if (!items.length) break;
+          if (Number.isFinite(total) && allProducts.length >= total) break;
+          if (items.length < limit) break;
+          page += 1;
+        }
+
+        if (!cancelled) {
+          setProducts(allProducts);
+        }
+      } catch {
+        if (!cancelled) {
+          setProducts([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setProductsLoading(false);
+        }
+      }
+    };
+
+    loadAllProducts();
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
+
+  useEffect(() => {
+    if (isNew || !id || !token) {
+      setSelectedProductIds([]);
+      return;
+    }
     setLoading(true);
     adminFetchCollection(token, id)
       .then((collection) => {
         if (!collection) return;
+        const flowConfig = readFlowConfig(collection.rules);
+        const assignedProducts = Array.isArray(collection.products) ? collection.products : [];
         setForm({
           title: collection.title || '',
           handle: collection.handle || '',
@@ -55,7 +179,16 @@ const AdminCollectionForm = () => {
           imageUrl: collection.imageUrl || '',
           parentId: collection.parentId || '',
           type: collection.type || 'MANUAL',
+          rules: flowConfig.rules,
+          flowEnabled: flowConfig.flowEnabled,
+          flowSkintones: flowConfig.flowSkintones,
+          flowOccasions: flowConfig.flowOccasions,
         });
+        setSelectedProductIds(
+          assignedProducts
+            .map((product) => product?.id)
+            .filter(Boolean),
+        );
       })
       .catch((err) => setError(err?.message || 'Unable to load collection.'))
       .finally(() => setLoading(false));
@@ -64,6 +197,37 @@ const AdminCollectionForm = () => {
   const handleFieldChange = (field, value) => {
     setForm((prev) => ({ ...prev, [field]: value }));
   };
+
+  const toggleChoice = (field, value) => {
+    setForm((prev) => {
+      const selected = Array.isArray(prev[field]) ? prev[field] : [];
+      return {
+        ...prev,
+        [field]: selected.includes(value)
+          ? selected.filter((entry) => entry !== value)
+          : [...selected, value],
+      };
+    });
+  };
+
+  const toggleProductSelection = (productId) => {
+    if (!productId) return;
+    setSelectedProductIds((prev) =>
+      prev.includes(productId)
+        ? prev.filter((idValue) => idValue !== productId)
+        : [...prev, productId],
+    );
+  };
+
+  const filteredProducts = useMemo(() => {
+    const query = productSearch.trim().toLowerCase();
+    if (!query) return products;
+    return products.filter((product) =>
+      [product?.title, product?.handle, product?.vendor]
+        .map((value) => String(value || '').toLowerCase())
+        .some((value) => value.includes(query)),
+    );
+  }, [products, productSearch]);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -77,6 +241,8 @@ const AdminCollectionForm = () => {
       imageUrl: form.imageUrl.trim() || undefined,
       parentId: form.parentId || null,
       type: form.type || 'MANUAL',
+      rules: buildRulesPayload(form),
+      productIds: selectedProductIds,
     };
 
     try {
@@ -94,6 +260,9 @@ const AdminCollectionForm = () => {
   };
 
   const parentOptions = collections.filter((collection) => collection.id !== id);
+  const visibleProductIds = filteredProducts.map((product) => product.id).filter(Boolean);
+  const allVisibleSelected =
+    visibleProductIds.length > 0 && visibleProductIds.every((productId) => selectedProductIds.includes(productId));
 
   return (
     <div className="space-y-6">
@@ -226,7 +395,165 @@ const AdminCollectionForm = () => {
                 placeholder="Collection description"
               />
             </div>
+
+            <div className="rounded-lg border border-slate-700 bg-slate-900/50 p-4 space-y-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Storefront Flow</p>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Control where this collection appears in Skin Tone + Occasion browsing.
+                  </p>
+                </div>
+                <label className="inline-flex items-center gap-2 text-xs text-slate-300">
+                  <input
+                    type="checkbox"
+                    checked={form.flowEnabled}
+                    onChange={(event) => handleFieldChange('flowEnabled', event.target.checked)}
+                    className="h-4 w-4 rounded border-slate-600 bg-slate-950 text-emerald-400 focus:ring-emerald-400"
+                  />
+                  Enable
+                </label>
+              </div>
+
+              {form.flowEnabled ? (
+                <div className="space-y-4">
+                  <div>
+                    <p className="text-[11px] uppercase tracking-[0.2em] text-slate-400 mb-2">Skintones</p>
+                    <div className="flex flex-wrap gap-2">
+                      {SKINTONE_OPTIONS.map((option) => {
+                        const checked = form.flowSkintones.includes(option.value);
+                        return (
+                          <button
+                            key={option.value}
+                            type="button"
+                            onClick={() => toggleChoice('flowSkintones', option.value)}
+                            className={`rounded-full border px-3 py-1 text-xs transition ${
+                              checked
+                                ? 'border-emerald-400 bg-emerald-400/10 text-emerald-300'
+                                : 'border-slate-700 text-slate-300 hover:border-slate-500'
+                            }`}
+                          >
+                            {option.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div>
+                    <p className="text-[11px] uppercase tracking-[0.2em] text-slate-400 mb-2">Occasions</p>
+                    <div className="flex flex-wrap gap-2">
+                      {OCCASION_OPTIONS.map((option) => {
+                        const checked = form.flowOccasions.includes(option.value);
+                        return (
+                          <button
+                            key={option.value}
+                            type="button"
+                            onClick={() => toggleChoice('flowOccasions', option.value)}
+                            className={`rounded-full border px-3 py-1 text-xs transition ${
+                              checked
+                                ? 'border-emerald-400 bg-emerald-400/10 text-emerald-300'
+                                : 'border-slate-700 text-slate-300 hover:border-slate-500'
+                            }`}
+                          >
+                            {option.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+            </div>
           </div>
+        </div>
+
+        <div className="rounded-lg border border-slate-700 bg-slate-900/50 p-4 space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Collection Products</p>
+              <p className="text-xs text-slate-500 mt-1">
+                Select products to include in this collection.
+              </p>
+            </div>
+            <span className="text-xs text-emerald-300">{selectedProductIds.length} selected</span>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              type="text"
+              value={productSearch}
+              onChange={(event) => setProductSearch(event.target.value)}
+              placeholder="Search products by title, handle, vendor..."
+              className="min-w-[240px] flex-1 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white focus:border-emerald-400 focus:outline-none"
+            />
+            <button
+              type="button"
+              onClick={() =>
+                setSelectedProductIds((prev) =>
+                  Array.from(new Set([...prev, ...visibleProductIds])),
+                )
+              }
+              className="rounded-lg border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-200 hover:bg-slate-800"
+            >
+              Select Visible
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelectedProductIds((prev) => prev.filter((idValue) => !visibleProductIds.includes(idValue)))}
+              className="rounded-lg border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-200 hover:bg-slate-800"
+            >
+              Unselect Visible
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelectedProductIds([])}
+              className="rounded-lg border border-rose-500/40 px-3 py-2 text-xs font-semibold text-rose-200 hover:bg-rose-500/10"
+            >
+              Clear All
+            </button>
+          </div>
+
+          <div className="rounded-lg border border-slate-800 bg-slate-950 max-h-80 overflow-y-auto">
+            {productsLoading ? (
+              <div className="px-4 py-8 text-center text-xs text-slate-400">Loading products...</div>
+            ) : filteredProducts.length === 0 ? (
+              <div className="px-4 py-8 text-center text-xs text-slate-400">No products found.</div>
+            ) : (
+              <div className="divide-y divide-slate-800">
+                {filteredProducts.map((product) => {
+                  const selected = selectedProductIds.includes(product.id);
+                  return (
+                    <button
+                      key={product.id}
+                      type="button"
+                      onClick={() => toggleProductSelection(product.id)}
+                      className={`w-full text-left px-4 py-3 flex items-center gap-3 transition ${
+                        selected ? 'bg-emerald-500/10' : 'hover:bg-slate-900'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selected}
+                        onChange={() => toggleProductSelection(product.id)}
+                        className="h-4 w-4 rounded border-slate-600 bg-slate-950 text-emerald-400 focus:ring-emerald-400"
+                      />
+                      <div className="min-w-0">
+                        <p className="text-sm text-white truncate">{product.title || 'Untitled product'}</p>
+                        <p className="text-xs text-slate-400 truncate">{product.handle || 'no-handle'}</p>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {!allVisibleSelected && visibleProductIds.length > 0 ? (
+            <p className="text-[11px] text-slate-500">
+              Showing {visibleProductIds.length} products from your catalog.
+            </p>
+          ) : null}
         </div>
 
         <div className="flex items-center justify-end gap-3">

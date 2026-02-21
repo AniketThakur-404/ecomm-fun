@@ -231,6 +231,25 @@ const normalizeCollection = (collection) => {
   const image = collection.imageUrl
     ? { url: collection.imageUrl, alt: collection.title }
     : null;
+  const rules =
+    collection.rules && typeof collection.rules === 'object'
+      ? collection.rules
+      : null;
+  const products = Array.isArray(collection.products)
+    ? collection.products
+      .map((entry) => entry?.product || entry)
+      .map((product) => {
+        if (!product?.id) return null;
+        return {
+          id: product.id,
+          title: product.title || '',
+          handle: product.handle || '',
+          status: product.status || '',
+          vendor: product.vendor || '',
+        };
+      })
+      .filter(Boolean)
+    : [];
   return {
     id: collection.id,
     handle: collection.handle,
@@ -239,6 +258,8 @@ const normalizeCollection = (collection) => {
     image,
     parentId: collection.parentId ?? null,
     count: collection._count?.products ?? null,
+    rules,
+    products,
   };
 };
 

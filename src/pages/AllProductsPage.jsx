@@ -84,6 +84,62 @@ const buildOccasionTokens = (value) => {
   return uniqueTokens([normalized, base, ...synonyms]);
 };
 
+const toCanonicalSkintone = (value) => {
+  const tokens = tokenize(value);
+  if (!tokens.length) return '';
+  if (tokens.includes('fair')) return 'fair';
+  if (tokens.includes('neutral') || tokens.includes('natural')) return 'neutral';
+  if (tokens.includes('dark')) return 'dark';
+  return tokens[0];
+};
+
+const toCanonicalOccasion = (value) => {
+  const tokens = tokenize(value);
+  if (!tokens.length) return '';
+  if (tokens.includes('puja') || tokens.includes('festive') || tokens.includes('festival')) return 'puja';
+  if (tokens.includes('office') || tokens.includes('work')) return 'office';
+  if (tokens.includes('date')) return 'date';
+  if (tokens.includes('party')) return 'party';
+  if (tokens.includes('casual')) return 'casual';
+  return tokens[0];
+};
+
+const normalizeRuleValues = (value, canonicalize) => {
+  const values = Array.isArray(value)
+    ? value
+    : typeof value === 'string'
+      ? value.split(',')
+      : [];
+  return uniqueTokens(values.map((item) => canonicalize(item)).filter(Boolean));
+};
+
+const getStorefrontFlowRule = (collection) => {
+  const rules = collection?.rules;
+  if (!rules || typeof rules !== 'object' || Array.isArray(rules)) return null;
+  const flow = rules.storefrontFlow;
+  if (!flow || typeof flow !== 'object' || Array.isArray(flow)) return null;
+  if (flow.enabled === false) return null;
+  return {
+    skintones: normalizeRuleValues(flow.skintones, toCanonicalSkintone),
+    occasions: normalizeRuleValues(flow.occasions, toCanonicalOccasion),
+  };
+};
+
+const productMatchesStorefrontFlow = (product, { skintone = '', occasion = '' } = {}) => {
+  const collections = Array.isArray(product?.collections) ? product.collections : [];
+  if (!collections.length) return false;
+
+  return collections.some((collection) => {
+    const flow = getStorefrontFlowRule(collection);
+    if (!flow) return false;
+    const matchesSkintone =
+      !skintone || flow.skintones.length === 0 || flow.skintones.includes(skintone);
+    const matchesOccasion =
+      !occasion || flow.occasions.length === 0 || flow.occasions.includes(occasion);
+    return matchesSkintone && matchesOccasion;
+  });
+};
+
 const SKINTONE_GROUPS = [
   { id: 'fair', label: 'Fair Skin', tokens: ['fair skin', 'fair'] },
   { id: 'neutral', label: 'Neutral Skin', tokens: ['neutral skin', 'neutral', 'natural skin', 'natural'] },
@@ -147,6 +203,12 @@ const AllProductsPage = ({ initialCategory = 'all' }) => {
     ? (skintoneGroupFromFilter ? skintoneGroupFromFilter.tokens : [skintoneFilter])
     : (skintoneFromCategory ? skintoneFromCategory.tokens : []);
   const occasionTokens = buildOccasionTokens(occasionFilter);
+  const selectedSkintoneKey = hasExplicitSkintone
+    ? toCanonicalSkintone(skintoneGroupFromFilter?.id || rawSkintone || skintoneFilter)
+    : (isSkintoneCategory ? toCanonicalSkintone(skintoneFromCategory?.id || activeCategory) : '');
+  const selectedOccasionKey = hasOccasionFilter
+    ? toCanonicalOccasion(rawOccasion || occasionFilter)
+    : '';
 
   const isAllMode = activeCategory === 'all' || isSkintoneCategory;
   const { products: catalogProducts, ensureCollectionProducts } = useCatalog();
@@ -242,23 +304,47 @@ const AllProductsPage = ({ initialCategory = 'all' }) => {
 
   const products = isAllMode ? pagedProducts : collectionProducts;
   const loading = isAllMode ? pagedLoading && pagedProducts.length === 0 : collectionLoading;
+  const useFlowRuleFiltering = useMemo(() => {
+    const shouldFilterByFlow = hasSkintoneFilter || (hasOccasionFilter && activeCategory === 'all');
+    if (!shouldFilterByFlow) return false;
+    return products.some((product) =>
+      (product?.collections || []).some((collection) => Boolean(getStorefrontFlowRule(collection))),
+    );
+  }, [products, hasSkintoneFilter, hasOccasionFilter, activeCategory]);
+
   const filteredProducts = useMemo(() => {
     const applySkintone = (hasExplicitSkintone || isSkintoneCategory) && skintoneTokens.length > 0;
     const applyOccasion = occasionTokens.length > 0;
-    let filtered = products;
-    if (applySkintone || applyOccasion) {
-      filtered = products.filter((product) => {
-        const matchesSkintone = applySkintone
-          ? skintoneTokens.some((token) => productMatchesFilter(product, token))
-          : true;
-        const matchesOccasion = applyOccasion
-          ? occasionTokens.some((token) => productMatchesFilter(product, token))
-          : true;
-        return matchesSkintone && matchesOccasion;
-      });
+    if (!(applySkintone || applyOccasion)) return products;
+
+    if (useFlowRuleFiltering) {
+      return products.filter((product) =>
+        productMatchesStorefrontFlow(product, {
+          skintone: applySkintone ? selectedSkintoneKey : '',
+          occasion: applyOccasion ? selectedOccasionKey : '',
+        }),
+      );
     }
-    return filtered;
-  }, [products, hasExplicitSkintone, isSkintoneCategory, skintoneTokens, occasionTokens]);
+
+    return products.filter((product) => {
+      const matchesSkintone = applySkintone
+        ? skintoneTokens.some((token) => productMatchesFilter(product, token))
+        : true;
+      const matchesOccasion = applyOccasion
+        ? occasionTokens.some((token) => productMatchesFilter(product, token))
+        : true;
+      return matchesSkintone && matchesOccasion;
+    });
+  }, [
+    products,
+    hasExplicitSkintone,
+    isSkintoneCategory,
+    skintoneTokens,
+    occasionTokens,
+    useFlowRuleFiltering,
+    selectedSkintoneKey,
+    selectedOccasionKey,
+  ]);
 
   const sortedProducts = useMemo(
     () => sortProducts(filteredProducts, sortBy).map(toProductCard).filter(Boolean),
@@ -270,14 +356,19 @@ const AllProductsPage = ({ initialCategory = 'all' }) => {
     if (!shouldGroupBySkintone) return [];
     return SKINTONE_GROUPS.map((group) => {
       const toneProducts = filteredProducts.filter((product) =>
-        group.tokens.some((token) => productMatchesFilter(product, token)),
+        useFlowRuleFiltering
+          ? productMatchesStorefrontFlow(product, {
+            skintone: group.id,
+            occasion: selectedOccasionKey,
+          })
+          : group.tokens.some((token) => productMatchesFilter(product, token)),
       );
       return {
         ...group,
         products: sortProducts(toneProducts, sortBy).map(toProductCard).filter(Boolean),
       };
     }).filter((group) => group.products.length > 0);
-  }, [filteredProducts, shouldGroupBySkintone, sortBy]);
+  }, [filteredProducts, shouldGroupBySkintone, sortBy, useFlowRuleFiltering, selectedOccasionKey]);
 
   const hasActiveFilters =
     Boolean(occasionTokens.length) ||
