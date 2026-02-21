@@ -530,11 +530,28 @@ const toProductResponse = (product) => {
   };
 };
 
-const ensureLocation = async (tx, name) => {
-  if (!name) return null;
-  const existing = await tx.location.findFirst({ where: { name } });
-  if (existing) return existing;
-  return tx.location.create({ data: { name } });
+const HEAVY_WRITE_TRANSACTION_OPTIONS = {
+  maxWait: 10_000,
+  timeout: 20_000,
+};
+
+const ensureLocation = async (tx, name, cache = null) => {
+  const normalizedName = String(name ?? '').trim();
+  if (!normalizedName) return null;
+
+  if (cache?.has(normalizedName)) {
+    return cache.get(normalizedName);
+  }
+
+  const existing = await tx.location.findFirst({ where: { name: normalizedName } });
+  if (existing) {
+    if (cache) cache.set(normalizedName, existing);
+    return existing;
+  }
+
+  const created = await tx.location.create({ data: { name: normalizedName } });
+  if (cache) cache.set(normalizedName, created);
+  return created;
 };
 
 const resolveCollectionIds = async (tx, payload) => {
@@ -824,6 +841,7 @@ const createProductRelations = async (tx, productId, payload) => {
     try {
       if (payload.variants?.length) {
         console.log('[createProductRelations] Creating variants:', payload.variants.length);
+        const locationCache = new Map();
         for (const [index, variant] of payload.variants.entries()) {
           const imageId = variant.imageUrl ? mediaByUrl.get(variant.imageUrl) : null;
 
@@ -854,7 +872,7 @@ const createProductRelations = async (tx, productId, payload) => {
 
           if (variant.inventory?.available !== undefined && variant.trackInventory !== false) {
             const locationName = variant.inventory.location || 'Default';
-            const location = await ensureLocation(tx, locationName);
+            const location = await ensureLocation(tx, locationName, locationCache);
             if (location) {
               await tx.inventoryLevel.create({
                 data: {
@@ -921,7 +939,7 @@ exports.createProduct = async (req, res, next) => {
     const payload = parseProductInput(req.body);
     const prisma = await getPrisma();
 
-    const product = await prisma.$transaction(async (tx) => {
+    const productId = await prisma.$transaction(async (tx) => {
       const created = await tx.product.create({
         data: {
           title: payload.title,
@@ -941,12 +959,16 @@ exports.createProduct = async (req, res, next) => {
       });
 
       await createProductRelations(tx, created.id, payload);
+      return created.id;
+    }, HEAVY_WRITE_TRANSACTION_OPTIONS);
 
-      return tx.product.findUnique({
-        where: { id: created.id },
-        include: productInclude,
-      });
+    const product = await prisma.product.findUnique({
+      where: { id: productId },
+      include: productInclude,
     });
+    if (!product) {
+      return sendError(res, 500, 'Product was created but could not be reloaded');
+    }
 
     res.status(201);
     return sendSuccess(res, toProductResponse(product));
@@ -968,7 +990,7 @@ exports.updateProduct = async (req, res, next) => {
     console.log('[updateProduct] Parsed payload keys:', Object.keys(payload));
     const prisma = await getPrisma();
 
-    const product = await prisma.$transaction(async (tx) => {
+    const productId = await prisma.$transaction(async (tx) => {
       console.log('[updateProduct] Step 1: Updating product base fields');
       const updated = await tx.product.update({
         where: { id: req.params.id },
@@ -995,22 +1017,31 @@ exports.updateProduct = async (req, res, next) => {
         await tx.productCollection.deleteMany({ where: { productId: updated.id } });
         console.log('[updateProduct] Step 2 done');
       }
-      if (payload.media) {
-        console.log('[updateProduct] Step 3: Deleting old ProductMedia records, count:', payload.media.length);
-        await tx.productMedia.deleteMany({ where: { productId: updated.id } });
+
+      if (payload.variants) {
+        console.log('[updateProduct] Step 3: Deleting old variants, count:', payload.variants.length);
+        await tx.productVariant.deleteMany({ where: { productId: updated.id } });
         console.log('[updateProduct] Step 3 done');
       }
+
       if (payload.options) {
         console.log('[updateProduct] Step 4: Deleting old ProductOption records, count:', payload.options.length);
         await tx.productOption.deleteMany({ where: { productId: updated.id } });
         console.log('[updateProduct] Step 4 done');
       }
-      if (payload.variants) {
-        console.log('[updateProduct] Step 5: Deleting old variants/inventory, count:', payload.variants.length);
-        await tx.inventoryLevel.deleteMany({ where: { variant: { productId: updated.id } } });
-        await tx.productVariant.deleteMany({ where: { productId: updated.id } });
+
+      if (payload.media) {
+        console.log('[updateProduct] Step 5: Deleting old ProductMedia records, count:', payload.media.length);
+        if (!payload.variants) {
+          await tx.productVariant.updateMany({
+            where: { productId: updated.id },
+            data: { imageId: null },
+          });
+        }
+        await tx.productMedia.deleteMany({ where: { productId: updated.id } });
         console.log('[updateProduct] Step 5 done');
       }
+
       if (payload.metafields) {
         console.log('[updateProduct] Step 6: Deleting old metafields, count:', payload.metafields.length);
         await tx.productMetafield.deleteMany({ where: { productId: updated.id } });
@@ -1020,15 +1051,18 @@ exports.updateProduct = async (req, res, next) => {
       console.log('[updateProduct] Step 7: Creating product relations');
       await createProductRelations(tx, updated.id, payload);
       console.log('[updateProduct] Step 7 done');
+      return updated.id;
+    }, HEAVY_WRITE_TRANSACTION_OPTIONS);
 
-      console.log('[updateProduct] Step 8: Fetching final product');
-      const result = await tx.product.findUnique({
-        where: { id: updated.id },
-        include: productInclude,
-      });
-      console.log('[updateProduct] Step 8 done');
-      return result;
+    console.log('[updateProduct] Step 8: Fetching final product');
+    const product = await prisma.product.findUnique({
+      where: { id: productId },
+      include: productInclude,
     });
+    if (!product) {
+      return sendError(res, 404, 'Product not found');
+    }
+    console.log('[updateProduct] Step 8 done');
 
     console.log('[updateProduct] Transaction complete, sending response');
     return sendSuccess(res, toProductResponse(product));
@@ -1390,7 +1424,7 @@ exports.bulkImportProducts = async (req, res, next) => {
             },
           });
           await createProductRelations(tx, existing.id, payload);
-        });
+        }, HEAVY_WRITE_TRANSACTION_OPTIONS);
 
         summary.updated += 1;
         summary.results.push({ handle: payload.handle, status: 'updated' });
@@ -1414,7 +1448,7 @@ exports.bulkImportProducts = async (req, res, next) => {
             },
           });
           await createProductRelations(tx, created.id, payload);
-        });
+        }, HEAVY_WRITE_TRANSACTION_OPTIONS);
         summary.created += 1;
         summary.results.push({ handle: payload.handle, status: 'created' });
       }

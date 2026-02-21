@@ -1,11 +1,14 @@
 const resolveApiBase = () => {
-  if (import.meta.env.VITE_API_BASE_URL) return import.meta.env.VITE_API_BASE_URL;
-  if (import.meta.env.PROD && typeof window !== 'undefined') return window.location.origin;
-  return 'http://localhost:5000';
+  const configured = import.meta.env.VITE_API_BASE_URL;
+  if (configured) return configured.replace(/\/+$/, '');
+  if (import.meta.env.PROD && typeof window !== 'undefined') {
+    return window.location.origin.replace(/\/+$/, '');
+  }
+  return '';
 };
 
-const API_BASE = resolveApiBase().replace(/\/+$/, '');
-const API_URL = `${API_BASE}/api`;
+const API_BASE = resolveApiBase();
+const API_URL = API_BASE ? `${API_BASE}/api` : '/api';
 
 const DEFAULT_LOCALE = import.meta.env.VITE_LOCALE || 'en-IN';
 const DEFAULT_CURRENCY = import.meta.env.VITE_CURRENCY || 'INR';
