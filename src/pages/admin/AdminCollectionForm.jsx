@@ -76,6 +76,20 @@ const buildRulesPayload = ({ rules, flowEnabled, flowSkintones, flowOccasions })
   return Object.keys(nextRules).length ? nextRules : null;
 };
 
+const buildSuggestedHandle = ({ title, parentId, collections }) => {
+  const titleSlug = slugify(title || '');
+  if (!titleSlug) return '';
+  if (!parentId) return titleSlug;
+
+  const parent = Array.isArray(collections)
+    ? collections.find((collection) => collection.id === parentId)
+    : null;
+  const parentSlug = slugify(parent?.handle || parent?.title || '');
+  if (!parentSlug) return titleSlug;
+
+  return slugify(`${parentSlug}-${titleSlug}`);
+};
+
 const AdminCollectionForm = () => {
   const { id } = useParams();
   const isNew = !id || id === 'new';
@@ -90,6 +104,7 @@ const AdminCollectionForm = () => {
   const [productsLoading, setProductsLoading] = useState(false);
   const [productSearch, setProductSearch] = useState('');
   const [selectedProductIds, setSelectedProductIds] = useState([]);
+  const [handleTouched, setHandleTouched] = useState(false);
   const [form, setForm] = useState({
     title: '',
     handle: '',
@@ -164,6 +179,7 @@ const AdminCollectionForm = () => {
   useEffect(() => {
     if (isNew || !id || !token) {
       setSelectedProductIds([]);
+      setHandleTouched(false);
       return;
     }
     setLoading(true);
@@ -184,6 +200,7 @@ const AdminCollectionForm = () => {
           flowSkintones: flowConfig.flowSkintones,
           flowOccasions: flowConfig.flowOccasions,
         });
+        setHandleTouched(Boolean(collection.handle));
         setSelectedProductIds(
           assignedProducts
             .map((product) => product?.id)
@@ -193,6 +210,19 @@ const AdminCollectionForm = () => {
       .catch((err) => setError(err?.message || 'Unable to load collection.'))
       .finally(() => setLoading(false));
   }, [id, isNew, token]);
+
+  useEffect(() => {
+    if (!isNew || handleTouched) return;
+    const suggested = buildSuggestedHandle({
+      title: form.title,
+      parentId: form.parentId,
+      collections,
+    });
+    setForm((prev) => {
+      if (prev.handle === suggested) return prev;
+      return { ...prev, handle: suggested };
+    });
+  }, [isNew, handleTouched, form.title, form.parentId, collections]);
 
   const handleFieldChange = (field, value) => {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -234,9 +264,15 @@ const AdminCollectionForm = () => {
     setError('');
     setSaving(true);
 
+    const suggestedHandle = buildSuggestedHandle({
+      title: form.title,
+      parentId: form.parentId,
+      collections,
+    });
+
     const payload = {
       title: form.title.trim(),
-      handle: form.handle.trim() || slugify(form.title),
+      handle: form.handle.trim() || suggestedHandle,
       descriptionHtml: form.descriptionHtml.trim() || undefined,
       imageUrl: form.imageUrl.trim() || undefined,
       parentId: form.parentId || null,
@@ -253,7 +289,21 @@ const AdminCollectionForm = () => {
       }
       navigate('/admin/collections');
     } catch (err) {
-      setError(err?.message || 'Unable to save collection.');
+      const message = err?.message || 'Unable to save collection.';
+      if (err?.status === 409 && /handle/i.test(message)) {
+        const fallback = buildSuggestedHandle({
+          title: form.title,
+          parentId: form.parentId,
+          collections,
+        });
+        setError(
+          fallback
+            ? `Collection handle already exists. Try "${fallback}" or set a custom unique handle.`
+            : 'Collection handle already exists. Set a custom unique handle.',
+        );
+      } else {
+        setError(message);
+      }
     } finally {
       setSaving(false);
     }
@@ -309,10 +359,17 @@ const AdminCollectionForm = () => {
               <input
                 type="text"
                 value={form.handle}
-                onChange={(event) => handleFieldChange('handle', event.target.value)}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  handleFieldChange('handle', value);
+                  setHandleTouched(value.trim().length > 0);
+                }}
                 className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white focus:border-emerald-400 focus:outline-none"
-                placeholder="auto-generated if left blank"
+                placeholder="auto-generated from parent + title if left blank"
               />
+              <p className="mt-1 text-[10px] text-slate-500">
+                Sub-collections auto-use parent handle prefix so each handle stays unique.
+              </p>
             </div>
 
             <div>

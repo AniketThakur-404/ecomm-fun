@@ -227,7 +227,7 @@ export default function Payment() {
               checkoutMethod: selectedPayment,
             },
             theme: {
-              color: '#ff3f6c',
+              color: '#000000',
             },
             modal: {
               ondismiss: () => reject(new Error('Payment cancelled.')),
@@ -330,7 +330,7 @@ export default function Payment() {
           <p className="mt-1 text-sm text-gray-600">{draft.shipping?.phone}</p>
           <Link
             to="/checkout/address"
-            className="mt-3 inline-flex text-xs font-semibold text-[var(--color-primary)] hover:underline"
+            className="mt-3 inline-flex text-xs font-semibold text-black hover:underline"
           >
             Change address
           </Link>
@@ -352,16 +352,16 @@ export default function Payment() {
                   className={`flex w-full items-start gap-3 px-4 py-3 text-left transition ${
                     isSelected ? '' : 'hover:bg-gray-50'
                   }`}
-                  style={isSelected ? { backgroundColor: 'rgba(255, 63, 108, 0.08)' } : undefined}
+                  style={isSelected ? { backgroundColor: 'rgba(17, 24, 39, 0.08)' } : undefined}
                 >
                   <span
                     className={`mt-1 h-5 w-5 rounded-full border-2 ${
-                      isSelected ? 'border-[var(--color-primary)]' : 'border-gray-300'
+                      isSelected ? 'border-black' : 'border-gray-300'
                     }`}
                   >
                     <span
                       className={`mx-auto mt-[3px] block h-2.5 w-2.5 rounded-full ${
-                        isSelected ? 'bg-[var(--color-primary)]' : 'bg-transparent'
+                        isSelected ? 'bg-black' : 'bg-transparent'
                       }`}
                     />
                   </span>
@@ -442,7 +442,7 @@ export default function Payment() {
           type="button"
           onClick={handlePlaceOrder}
           disabled={placingOrder}
-          className="w-full rounded-sm bg-[var(--color-primary)] py-3 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-[var(--color-primary-dark)] disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-500"
+          className="w-full rounded-sm bg-black py-3 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-gray-900 disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-500"
         >
           {placingOrder ? 'Placing Order...' : `Place Order • ${formatMoney(finalTotal, currency)}`}
         </button>

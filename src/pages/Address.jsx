@@ -214,13 +214,13 @@ export default function Address() {
         <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
           <div className="mb-3 flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <MapPin className="h-4 w-4 text-[var(--color-primary)]" />
+              <MapPin className="h-4 w-4 text-black" />
               <p className="text-sm font-semibold text-[var(--color-text-main)]">Shipping Address</p>
             </div>
             <button
               type="button"
               onClick={handleSaveAddress}
-              className="inline-flex items-center gap-1 rounded-full border border-[var(--color-primary)] px-3 py-1 text-xs font-semibold text-[var(--color-primary)] hover:bg-[var(--color-primary)] hover:text-white"
+              className="inline-flex items-center gap-1 rounded-full border border-black px-3 py-1 text-xs font-semibold text-black hover:bg-black hover:text-white"
             >
               <Plus className="h-3.5 w-3.5" />
               Save
@@ -236,8 +236,8 @@ export default function Address() {
                   onClick={() => applySavedAddress(address.id)}
                   className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
                     selectedAddressId === address.id
-                      ? 'border-[var(--color-primary)] bg-[var(--color-primary)] text-white'
-                      : 'border-gray-300 text-gray-700 hover:border-[var(--color-primary)] hover:text-[var(--color-primary)]'
+                      ? 'border-black bg-black text-white'
+                      : 'border-gray-300 text-gray-700 hover:border-black hover:text-black'
                   }`}
                 >
                   {address.label || 'Address'}: {address.fullName || 'Saved'}
@@ -250,37 +250,37 @@ export default function Address() {
             <input
               value={form.fullName}
               onChange={(event) => handleFieldChange('fullName', event.target.value)}
-              className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[var(--color-primary)] focus:outline-none"
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-black focus:outline-none"
               placeholder="Full Name"
             />
             <input
               value={form.email}
               onChange={(event) => handleFieldChange('email', event.target.value)}
-              className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[var(--color-primary)] focus:outline-none"
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-black focus:outline-none"
               placeholder="Email"
             />
             <input
               value={form.phone}
               onChange={(event) => handleFieldChange('phone', event.target.value)}
-              className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[var(--color-primary)] focus:outline-none"
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-black focus:outline-none"
               placeholder="Phone"
             />
             <input
               value={form.postalCode}
               onChange={(event) => handleFieldChange('postalCode', event.target.value)}
-              className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[var(--color-primary)] focus:outline-none"
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-black focus:outline-none"
               placeholder="Postal Code"
             />
             <input
               value={form.city}
               onChange={(event) => handleFieldChange('city', event.target.value)}
-              className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[var(--color-primary)] focus:outline-none md:col-span-2"
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-black focus:outline-none md:col-span-2"
               placeholder="City"
             />
             <textarea
               value={form.address}
               onChange={(event) => handleFieldChange('address', event.target.value)}
-              className="min-h-[90px] rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[var(--color-primary)] focus:outline-none md:col-span-2"
+              className="min-h-[90px] rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-black focus:outline-none md:col-span-2"
               placeholder="House no, street, landmark"
             />
           </div>
@@ -290,7 +290,7 @@ export default function Address() {
               type="checkbox"
               checked={rememberAddress}
               onChange={(event) => setRememberAddress(event.target.checked)}
-              className="h-4 w-4 rounded border-gray-300 text-[var(--color-primary)] focus:ring-[var(--color-primary)]"
+              className="h-4 w-4 rounded border-gray-300 text-black focus:ring-black"
             />
             Save this address for next time
           </label>
@@ -319,7 +319,7 @@ export default function Address() {
                   </p>
                   <p className="mt-1 text-xs font-medium text-gray-700">{buildEstimateLabel(index)}</p>
                 </div>
-                <Truck className="h-4 w-4 text-[var(--color-primary)]" />
+                <Truck className="h-4 w-4 text-black" />
               </div>
             ))}
           </div>
@@ -363,7 +363,7 @@ export default function Address() {
         <button
           type="button"
           onClick={handleContinue}
-          className="inline-flex w-full items-center justify-center gap-2 rounded-sm bg-[var(--color-primary)] py-3 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-[var(--color-primary-dark)] mt-3"
+          className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-sm bg-black py-3 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-gray-900"
         >
           <CheckCircle2 className="h-4 w-4" />
           Continue to Payment
