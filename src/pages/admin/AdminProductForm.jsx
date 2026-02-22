@@ -144,6 +144,7 @@ const AdminProductForm = () => {
     variants: [],
     metafields: [],
     comboItems: '',
+    bundlePrice: '',
     sizeChartImageUrl: '',
     sizeChartText: '',
   });
@@ -159,6 +160,10 @@ const AdminProductForm = () => {
     () => bundleProducts.map((item) => item.handle).sort().join(','),
     [bundleProducts],
   );
+  const isBundleProduct = useMemo(() => {
+    const type = normalizeToken(form.productType);
+    return type.includes('bundle') || type.includes('combo');
+  }, [form.productType]);
 
   useEffect(
     () => () => {
@@ -244,6 +249,10 @@ const AdminProductForm = () => {
               inventoryPolicy: variant.inventoryPolicy || 'DENY',
             }))
             : [],
+          bundlePrice:
+            Array.isArray(product.variants) && product.variants.length
+              ? product.variants[0].price ?? ''
+              : '',
           metafields: Array.isArray(filteredMetafields)
             ? filteredMetafields.map((field) => ({
               set: field.set || 'PRODUCT',
@@ -684,6 +693,10 @@ const AdminProductForm = () => {
       });
     }
 
+    const bundleBaseVariant = form.variants[0] || {};
+    const bundlePriceValue =
+      form.bundlePrice === '' ? bundleBaseVariant.price : form.bundlePrice;
+
     const payload = {
       title: form.title.trim(),
       handle: form.handle.trim() || slugify(form.title),
@@ -702,21 +715,42 @@ const AdminProductForm = () => {
           alt: media.alt || undefined,
           type: media.type || 'IMAGE',
         })),
-      options: form.options.length ? optionList : [],
-      variants: form.variants.map((variant) => ({
-        optionValues: variant.optionValues || undefined,
-        sku: variant.sku.trim() || undefined,
-        price: variant.price === '' ? undefined : Number(variant.price),
-        compareAtPrice:
-          variant.compareAtPrice === '' ? undefined : Number(variant.compareAtPrice),
-        barcode: variant.barcode.trim() || undefined,
-        taxable: variant.taxable,
-        trackInventory: variant.trackInventory,
-        inventoryPolicy: variant.inventoryPolicy || 'DENY',
-        inventory: {
-          available: Number(variant.inventory) || 0,
-        },
-      })),
+      options: isBundleProduct ? [] : form.options.length ? optionList : [],
+      variants: isBundleProduct
+        ? [
+          {
+            sku: bundleBaseVariant.sku?.trim() || undefined,
+            price: bundlePriceValue === '' || bundlePriceValue === undefined
+              ? undefined
+              : Number(bundlePriceValue),
+            compareAtPrice:
+              bundleBaseVariant.compareAtPrice === '' ||
+              bundleBaseVariant.compareAtPrice === undefined
+                ? undefined
+                : Number(bundleBaseVariant.compareAtPrice),
+            barcode: bundleBaseVariant.barcode?.trim() || undefined,
+            taxable: bundleBaseVariant.taxable ?? true,
+            trackInventory: bundleBaseVariant.trackInventory ?? false,
+            inventoryPolicy: bundleBaseVariant.inventoryPolicy || 'CONTINUE',
+            inventory: {
+              available: Number(bundleBaseVariant.inventory) || 0,
+            },
+          },
+        ]
+        : form.variants.map((variant) => ({
+          optionValues: variant.optionValues || undefined,
+          sku: variant.sku.trim() || undefined,
+          price: variant.price === '' ? undefined : Number(variant.price),
+          compareAtPrice:
+            variant.compareAtPrice === '' ? undefined : Number(variant.compareAtPrice),
+          barcode: variant.barcode.trim() || undefined,
+          taxable: variant.taxable,
+          trackInventory: variant.trackInventory,
+          inventoryPolicy: variant.inventoryPolicy || 'DENY',
+          inventory: {
+            available: Number(variant.inventory) || 0,
+          },
+        })),
       metafields,
     };
 
@@ -819,6 +853,9 @@ const AdminProductForm = () => {
                   className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white focus:border-emerald-400 focus:outline-none"
                   placeholder="T-shirt, Jeans, Sneakers"
                 />
+                <p className="mt-2 text-[11px] text-slate-500">
+                  Use "Bundle" for bundle products. Bundles disable variants and use manual price.
+                </p>
               </div>
               <div>
                 <label className="text-xs uppercase tracking-[0.3em] text-slate-400">Apparel Type</label>
@@ -1361,197 +1398,221 @@ const AdminProductForm = () => {
           </div>
         </div>
 
-        <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 space-y-4">
-          <div className="flex items-center justify-between">
+        {isBundleProduct ? (
+          <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 space-y-4">
             <div>
-              <p className="text-sm font-semibold text-white">Options</p>
-              <p className="text-xs text-slate-400">Define size, color, or other variant options.</p>
+              <p className="text-sm font-semibold text-white">Bundle Pricing</p>
+              <p className="text-xs text-slate-400">
+                Bundle products use one manual price and do not use variant options.
+              </p>
             </div>
-            <button
-              type="button"
-              onClick={addOption}
-              className="rounded-lg border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-200 hover:bg-slate-800"
-            >
-              Add option
-            </button>
+            <div className="max-w-sm">
+              <label className="text-xs uppercase tracking-[0.3em] text-slate-400">Bundle Price</label>
+              <input
+                type="number"
+                step="0.01"
+                value={form.bundlePrice}
+                onChange={(event) => handleFieldChange('bundlePrice', event.target.value)}
+                className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white focus:border-emerald-400 focus:outline-none"
+                placeholder="Enter bundle price"
+              />
+            </div>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => addPresetOption('Size', 'XS, S, M, L, XL')}
-              className="rounded-lg border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-200 hover:bg-slate-800"
-            >
-              Add Size Option
-            </button>
-            <button
-              type="button"
-              onClick={() => addPresetOption('Color', 'Black, Brown, Navy')}
-              className="rounded-lg border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-200 hover:bg-slate-800"
-            >
-              Add Color Option
-            </button>
-          </div>
-          {form.options.length === 0 ? (
-            <p className="text-xs text-slate-500">No options yet.</p>
-          ) : (
-            <div className="space-y-3">
-              {form.options.map((option, index) => (
-                <div key={`option-${index}`} className="grid gap-2 md:grid-cols-5">
-                  <input
-                    type="text"
-                    value={option.name}
-                    onChange={(event) => updateOption(index, 'name', event.target.value)}
-                    className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white focus:border-emerald-400 focus:outline-none"
-                    placeholder="Option name"
-                  />
-                  <input
-                    type="text"
-                    value={option.values}
-                    onChange={(event) => updateOption(index, 'values', event.target.value)}
-                    className="md:col-span-3 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white focus:border-emerald-400 focus:outline-none"
-                    placeholder="Values (comma-separated)"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => removeOption(index)}
-                    className="rounded-lg border border-rose-500/40 px-3 py-2 text-xs text-rose-200 hover:bg-rose-500/10"
-                  >
-                    Remove
-                  </button>
+        ) : (
+          <>
+            <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-white">Options</p>
+                  <p className="text-xs text-slate-400">Define size, color, or other variant options.</p>
                 </div>
-              ))}
-            </div>
-          )}
-          <div className="flex flex-wrap gap-3">
-            <button
-              type="button"
-              onClick={generateVariants}
-              className="rounded-lg bg-emerald-400 px-4 py-2 text-xs font-semibold text-slate-950 hover:bg-emerald-300 transition"
-            >
-              Generate variants
-            </button>
-            <button
-              type="button"
-              onClick={addVariant}
-              className="rounded-lg border border-slate-700 px-4 py-2 text-xs font-semibold text-slate-200 hover:bg-slate-800 transition"
-            >
-              Add custom variant
-            </button>
-          </div>
-        </div>
-
-        <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-semibold text-white">Variants</p>
-              <p className="text-xs text-slate-400">Prices, SKUs, and inventory per variant.</p>
-            </div>
-          </div>
-          {form.variants.length === 0 ? (
-            <p className="text-xs text-slate-500">No variants yet.</p>
-          ) : (
-            <div className="space-y-4">
-              {form.variants.map((variant, index) => (
-                <div key={`variant-${index}`} className="rounded-xl border border-slate-800 p-4 space-y-3">
-                  {optionList.length ? (
-                    <div className="grid gap-2 md:grid-cols-3">
-                      {optionList.map((option) => (
-                        <input
-                          key={`${option.name}-${index}`}
-                          type="text"
-                          value={variant.optionValues?.[option.name] || ''}
-                          onChange={(event) =>
-                            updateVariantOption(index, option.name, event.target.value)
-                          }
-                          className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white focus:border-emerald-400 focus:outline-none"
-                          placeholder={option.name}
-                        />
-                      ))}
-                    </div>
-                  ) : null}
-                  <div className="grid gap-2 md:grid-cols-5">
-                    <input
-                      type="text"
-                      value={variant.sku}
-                      onChange={(event) => updateVariant(index, 'sku', event.target.value)}
-                      className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white focus:border-emerald-400 focus:outline-none"
-                      placeholder="SKU"
-                    />
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={variant.price}
-                      onChange={(event) => updateVariant(index, 'price', event.target.value)}
-                      className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white focus:border-emerald-400 focus:outline-none"
-                      placeholder="Price"
-                    />
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={variant.compareAtPrice}
-                      onChange={(event) => updateVariant(index, 'compareAtPrice', event.target.value)}
-                      className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white focus:border-emerald-400 focus:outline-none"
-                      placeholder="Compare at"
-                    />
-                    <input
-                      type="number"
-                      value={variant.inventory}
-                      onChange={(event) => updateVariant(index, 'inventory', event.target.value)}
-                      className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white focus:border-emerald-400 focus:outline-none"
-                      placeholder="Inventory"
-                    />
-                    <input
-                      type="text"
-                      value={variant.barcode}
-                      onChange={(event) => updateVariant(index, 'barcode', event.target.value)}
-                      className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white focus:border-emerald-400 focus:outline-none"
-                      placeholder="Barcode"
-                    />
-                  </div>
-                  <div className="flex flex-wrap gap-4 text-xs text-slate-300">
-                    <label className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={addOption}
+                  className="rounded-lg border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-200 hover:bg-slate-800"
+                >
+                  Add option
+                </button>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => addPresetOption('Size', 'XS, S, M, L, XL')}
+                  className="rounded-lg border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-200 hover:bg-slate-800"
+                >
+                  Add Size Option
+                </button>
+                <button
+                  type="button"
+                  onClick={() => addPresetOption('Color', 'Black, Brown, Navy')}
+                  className="rounded-lg border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-200 hover:bg-slate-800"
+                >
+                  Add Color Option
+                </button>
+              </div>
+              {form.options.length === 0 ? (
+                <p className="text-xs text-slate-500">No options yet.</p>
+              ) : (
+                <div className="space-y-3">
+                  {form.options.map((option, index) => (
+                    <div key={`option-${index}`} className="grid gap-2 md:grid-cols-5">
                       <input
-                        type="checkbox"
-                        checked={variant.taxable}
-                        onChange={(event) => updateVariant(index, 'taxable', event.target.checked)}
+                        type="text"
+                        value={option.name}
+                        onChange={(event) => updateOption(index, 'name', event.target.value)}
+                        className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white focus:border-emerald-400 focus:outline-none"
+                        placeholder="Option name"
                       />
-                      Taxable
-                    </label>
-                    <label className="flex items-center gap-2">
                       <input
-                        type="checkbox"
-                        checked={variant.trackInventory}
-                        onChange={(event) =>
-                          updateVariant(index, 'trackInventory', event.target.checked)
-                        }
+                        type="text"
+                        value={option.values}
+                        onChange={(event) => updateOption(index, 'values', event.target.value)}
+                        className="md:col-span-3 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white focus:border-emerald-400 focus:outline-none"
+                        placeholder="Values (comma-separated)"
                       />
-                      Track inventory
-                    </label>
-                    <label className="flex items-center gap-2">
-                      <select
-                        value={variant.inventoryPolicy}
-                        onChange={(event) =>
-                          updateVariant(index, 'inventoryPolicy', event.target.value)
-                        }
-                        className="rounded border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-white"
+                      <button
+                        type="button"
+                        onClick={() => removeOption(index)}
+                        className="rounded-lg border border-rose-500/40 px-3 py-2 text-xs text-rose-200 hover:bg-rose-500/10"
                       >
-                        <option value="DENY">Deny oversell</option>
-                        <option value="CONTINUE">Continue selling</option>
-                      </select>
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => removeVariant(index)}
-                      className="text-xs text-rose-300 hover:text-rose-200"
-                    >
-                      Remove variant
-                    </button>
-                  </div>
+                        Remove
+                      </button>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              )}
+              <div className="flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={generateVariants}
+                  className="rounded-lg bg-emerald-400 px-4 py-2 text-xs font-semibold text-slate-950 hover:bg-emerald-300 transition"
+                >
+                  Generate variants
+                </button>
+                <button
+                  type="button"
+                  onClick={addVariant}
+                  className="rounded-lg border border-slate-700 px-4 py-2 text-xs font-semibold text-slate-200 hover:bg-slate-800 transition"
+                >
+                  Add custom variant
+                </button>
+              </div>
             </div>
-          )}
-        </div>
+
+            <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-white">Variants</p>
+                  <p className="text-xs text-slate-400">Prices, SKUs, and inventory per variant.</p>
+                </div>
+              </div>
+              {form.variants.length === 0 ? (
+                <p className="text-xs text-slate-500">No variants yet.</p>
+              ) : (
+                <div className="space-y-4">
+                  {form.variants.map((variant, index) => (
+                    <div key={`variant-${index}`} className="rounded-xl border border-slate-800 p-4 space-y-3">
+                      {optionList.length ? (
+                        <div className="grid gap-2 md:grid-cols-3">
+                          {optionList.map((option) => (
+                            <input
+                              key={`${option.name}-${index}`}
+                              type="text"
+                              value={variant.optionValues?.[option.name] || ''}
+                              onChange={(event) =>
+                                updateVariantOption(index, option.name, event.target.value)
+                              }
+                              className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white focus:border-emerald-400 focus:outline-none"
+                              placeholder={option.name}
+                            />
+                          ))}
+                        </div>
+                      ) : null}
+                      <div className="grid gap-2 md:grid-cols-5">
+                        <input
+                          type="text"
+                          value={variant.sku}
+                          onChange={(event) => updateVariant(index, 'sku', event.target.value)}
+                          className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white focus:border-emerald-400 focus:outline-none"
+                          placeholder="SKU"
+                        />
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={variant.price}
+                          onChange={(event) => updateVariant(index, 'price', event.target.value)}
+                          className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white focus:border-emerald-400 focus:outline-none"
+                          placeholder="Price"
+                        />
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={variant.compareAtPrice}
+                          onChange={(event) => updateVariant(index, 'compareAtPrice', event.target.value)}
+                          className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white focus:border-emerald-400 focus:outline-none"
+                          placeholder="Compare at"
+                        />
+                        <input
+                          type="number"
+                          value={variant.inventory}
+                          onChange={(event) => updateVariant(index, 'inventory', event.target.value)}
+                          className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white focus:border-emerald-400 focus:outline-none"
+                          placeholder="Inventory"
+                        />
+                        <input
+                          type="text"
+                          value={variant.barcode}
+                          onChange={(event) => updateVariant(index, 'barcode', event.target.value)}
+                          className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white focus:border-emerald-400 focus:outline-none"
+                          placeholder="Barcode"
+                        />
+                      </div>
+                      <div className="flex flex-wrap gap-4 text-xs text-slate-300">
+                        <label className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={variant.taxable}
+                            onChange={(event) => updateVariant(index, 'taxable', event.target.checked)}
+                          />
+                          Taxable
+                        </label>
+                        <label className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={variant.trackInventory}
+                            onChange={(event) =>
+                              updateVariant(index, 'trackInventory', event.target.checked)
+                            }
+                          />
+                          Track inventory
+                        </label>
+                        <label className="flex items-center gap-2">
+                          <select
+                            value={variant.inventoryPolicy}
+                            onChange={(event) =>
+                              updateVariant(index, 'inventoryPolicy', event.target.value)
+                            }
+                            className="rounded border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-white"
+                          >
+                            <option value="DENY">Deny oversell</option>
+                            <option value="CONTINUE">Continue selling</option>
+                          </select>
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => removeVariant(index)}
+                          className="text-xs text-rose-300 hover:text-rose-200"
+                        >
+                          Remove variant
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </>
+        )}
 
         <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 space-y-4">
           <div className="flex items-center justify-between">

@@ -142,6 +142,7 @@ const normalizeMedia = (media, fallback = []) => {
 };
 const normalizeOptions = (options) => {
   if (!Array.isArray(options)) return undefined;
+  if (options.length === 0) return [];
   const out = options
     .map((option) => {
       if (!option) return null;
@@ -160,6 +161,7 @@ const normalizeOptions = (options) => {
 
 const normalizeVariants = (variants) => {
   if (!Array.isArray(variants)) return undefined;
+  if (variants.length === 0) return [];
   const out = variants
     .map((variant) => {
       if (!variant) return null;
