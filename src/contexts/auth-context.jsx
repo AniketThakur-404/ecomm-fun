@@ -4,10 +4,12 @@ import {
   fetchMyOrders,
   fetchProfile,
   signIn,
+  signInWithGoogle as signInWithGoogleApi,
   signUp,
   updateProfile as updateProfileApi,
   updatePassword as updatePasswordApi,
 } from '../lib/api';
+import { isFirebaseGoogleConfigured, signInWithGooglePopup } from '../lib/firebase';
 
 const AuthContext = createContext(null);
 
@@ -113,6 +115,54 @@ export function AuthProvider({ children }) {
     [storeToken, fetchCustomer],
   );
 
+  const loginWithGoogle = useCallback(async () => {
+    setError(null);
+    setLoading(true);
+
+    try {
+      if (!isFirebaseGoogleConfigured) {
+        throw new Error('Google sign-in is not configured. Please contact support.');
+      }
+
+      const googleAuth = await signInWithGooglePopup();
+      const result = await signInWithGoogleApi({
+        idToken: googleAuth.idToken,
+        name: googleAuth.name || undefined,
+      });
+      const token = result?.token;
+
+      if (!token) {
+        const msg = 'Google sign-in failed. Please try again.';
+        setError(msg);
+        setLoading(false);
+        return { success: false, error: msg };
+      }
+
+      storeToken(token);
+      const customerData = await fetchCustomer(token);
+      if (!customerData) {
+        const msg = 'Unable to load your account details. Please try again.';
+        setError(msg);
+        return { success: false, error: msg };
+      }
+
+      return { success: true };
+    } catch (e) {
+      const firebaseCode = e?.code || '';
+      const msg =
+        firebaseCode === 'auth/popup-closed-by-user'
+          ? 'Google sign-in cancelled.'
+          : firebaseCode === 'auth/popup-blocked'
+            ? 'Popup blocked. Please allow popups and try again.'
+            : firebaseCode === 'auth/cancelled-popup-request'
+              ? 'Google sign-in was interrupted. Please try again.'
+              : e?.message || 'Google sign-in failed';
+      setError(msg);
+      setLoading(false);
+      return { success: false, error: msg };
+    }
+  }, [storeToken, fetchCustomer]);
+
   const register = useCallback(async ({ email, password, firstName, lastName }) => {
     setError(null);
     setLoading(true);
@@ -181,12 +231,14 @@ export function AuthProvider({ children }) {
     loading,
     error,
     login,
+    loginWithGoogle,
     register,
     logout,
     updateCustomerProfile,
     changeCustomerPassword,
     getAuthToken: getStoredToken,
     refreshCustomer: () => fetchCustomer(getStoredToken()),
+    canUseGoogleAuth: isFirebaseGoogleConfigured,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

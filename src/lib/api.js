@@ -669,6 +669,14 @@ export const signIn = async ({ email, password }) => {
   return unwrap(payload);
 };
 
+export const signInWithGoogle = async ({ idToken, name }) => {
+  const payload = await request('/users/google', {
+    method: 'POST',
+    body: { idToken, name },
+  });
+  return unwrap(payload);
+};
+
 export const fetchProfile = async (token) => {
   const payload = await requestWithAuth('/users/me', token);
   return unwrap(payload);

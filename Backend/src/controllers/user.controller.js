@@ -3,12 +3,18 @@ const crypto = require('crypto');
 const { z } = require('zod');
 
 const { getPrisma } = require('../db/prismaClient');
+const { verifyFirebaseIdToken } = require('../utils/firebaseAdmin');
 const { signToken } = require('../utils/jwt');
 const { sendSuccess, sendError } = require('../utils/response');
 
 const authSchema = z.object({
   email: z.string().email(),
   password: z.string().min(6, 'Password must be at least 6 characters'),
+  name: z.string().trim().optional(),
+});
+
+const googleAuthSchema = z.object({
+  idToken: z.string().min(1, 'Google token is required'),
   name: z.string().trim().optional(),
 });
 
@@ -107,6 +113,62 @@ exports.signin = async (req, res, next) => {
       return sendError(res, 400, error.errors[0]?.message || 'Invalid payload');
     }
     return next(error);
+  }
+};
+
+exports.googleSignin = async (req, res, next) => {
+  try {
+    const { idToken, name } = googleAuthSchema.parse(req.body);
+    const decoded = await verifyFirebaseIdToken(idToken);
+    const email = String(decoded?.email || '')
+      .trim()
+      .toLowerCase();
+
+    if (!email) {
+      return sendError(res, 400, 'Google account email is unavailable');
+    }
+
+    if (decoded.email_verified === false) {
+      return sendError(res, 401, 'Google account email is not verified');
+    }
+
+    const normalizedName = String(name || decoded.name || '').trim() || null;
+    const prisma = await getPrisma();
+
+    let user = await prisma.user.findFirst({
+      where: { email: { equals: email, mode: 'insensitive' } },
+    });
+
+    if (!user) {
+      user = await prisma.user.create({
+        data: {
+          email,
+          name: normalizedName,
+          passwordHash: null,
+        },
+      });
+    } else if (!user.name && normalizedName) {
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: { name: normalizedName },
+      });
+    }
+
+    return sendSuccess(res, buildAuthResponse(user));
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return sendError(res, 400, error.errors[0]?.message || 'Invalid payload');
+    }
+    if (error?.code === 'FIREBASE_NOT_CONFIGURED') {
+      return sendError(res, 503, 'Google sign-in is not configured on this server');
+    }
+    if (error?.code === 'FIREBASE_CONFIG_INVALID') {
+      return sendError(res, 503, 'Google sign-in server configuration is invalid');
+    }
+    if (typeof error?.code === 'string' && error.code.startsWith('auth/')) {
+      return sendError(res, 401, 'Google token is invalid or expired');
+    }
+    return handleError(error, res, next);
   }
 };
 
