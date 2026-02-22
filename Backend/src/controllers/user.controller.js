@@ -165,6 +165,9 @@ exports.googleSignin = async (req, res, next) => {
     if (error?.code === 'FIREBASE_CONFIG_INVALID') {
       return sendError(res, 503, 'Google sign-in server configuration is invalid');
     }
+    if (error?.code === 'FIREBASE_TOKEN_INVALID') {
+      return sendError(res, 401, 'Google token is invalid or expired');
+    }
     if (typeof error?.code === 'string' && error.code.startsWith('auth/')) {
       return sendError(res, 401, 'Google token is invalid or expired');
     }
