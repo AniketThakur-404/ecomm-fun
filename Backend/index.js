@@ -4,8 +4,7 @@ const compression = require('compression');
 const path = require('node:path');
 const dotenv = require('dotenv');
 
-dotenv.config({ override: true, quiet: true });
-dotenv.config({ path: path.join(__dirname, '.env'), override: false, quiet: true });
+dotenv.config({ path: path.join(__dirname, '.env'), override: true, quiet: true });
 
 const { env } = require('./src/config');
 const { errorHandler } = require('./src/middleware/error');

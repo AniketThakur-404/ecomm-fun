@@ -1,8 +1,7 @@
 const path = require('node:path');
 const dotenv = require('dotenv');
 
-dotenv.config({ override: true, quiet: true });
-dotenv.config({ path: path.resolve(__dirname, '../../.env'), override: false, quiet: true });
+dotenv.config({ path: path.resolve(__dirname, '../../.env'), override: true, quiet: true });
 
 const env = {
   port: Number(process.env.PORT || 5001),

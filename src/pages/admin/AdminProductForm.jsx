@@ -112,6 +112,18 @@ const readCustomMetafield = (fields, keys) => {
 const createUploadId = () =>
   `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 
+const createVariantDraft = (seed = {}) => ({
+  optionValues: seed.optionValues || {},
+  sku: seed.sku || '',
+  price: seed.price ?? '',
+  compareAtPrice: seed.compareAtPrice ?? '',
+  inventory: seed.inventory ?? 0,
+  barcode: seed.barcode || '',
+  trackInventory: seed.trackInventory ?? true,
+  taxable: seed.taxable ?? true,
+  inventoryPolicy: seed.inventoryPolicy || 'DENY',
+});
+
 const AdminProductForm = () => {
   const { id } = useParams();
   const isNew = !id || id === 'new';
@@ -164,6 +176,10 @@ const AdminProductForm = () => {
     const type = normalizeToken(form.productType);
     return type.includes('bundle') || type.includes('combo');
   }, [form.productType]);
+  const primaryVariant = useMemo(
+    () => createVariantDraft(form.variants[0]),
+    [form.variants],
+  );
 
   useEffect(
     () => () => {
@@ -500,6 +516,7 @@ const AdminProductForm = () => {
       setError('Add at least one option with values to generate variants.');
       return;
     }
+    const seedVariant = createVariantDraft(form.variants[0]);
     const names = optionList.map((option) => option.name);
     const combos = cartesian(optionList.map((option) => option.values));
     const existing = new Map(
@@ -517,17 +534,18 @@ const AdminProductForm = () => {
       const key = combo.join('|');
       const prev = existing.get(key);
       return (
-        prev || {
+        prev ||
+        createVariantDraft({
           optionValues,
-          sku: '',
-          price: '',
-          compareAtPrice: '',
-          inventory: 0,
-          barcode: '',
-          trackInventory: true,
-          taxable: true,
-          inventoryPolicy: 'DENY',
-        }
+          sku: seedVariant.sku,
+          price: seedVariant.price,
+          compareAtPrice: seedVariant.compareAtPrice,
+          inventory: seedVariant.inventory,
+          barcode: seedVariant.barcode,
+          trackInventory: seedVariant.trackInventory,
+          taxable: seedVariant.taxable,
+          inventoryPolicy: seedVariant.inventoryPolicy,
+        })
       );
     });
 
@@ -537,21 +555,25 @@ const AdminProductForm = () => {
   const addVariant = () => {
     setForm((prev) => ({
       ...prev,
-      variants: [
-        ...prev.variants,
-        {
-          optionValues: {},
-          sku: '',
-          price: '',
-          compareAtPrice: '',
-          inventory: 0,
-          barcode: '',
-          trackInventory: true,
-          taxable: true,
-          inventoryPolicy: 'DENY',
-        },
-      ],
+      variants: [...prev.variants, createVariantDraft()],
     }));
+  };
+
+  const updatePrimaryPricing = (field, value) => {
+    setForm((prev) => {
+      if (!prev.variants.length) {
+        return {
+          ...prev,
+          variants: [createVariantDraft({ [field]: value })],
+        };
+      }
+      return {
+        ...prev,
+        variants: prev.variants.map((variant, idx) =>
+          idx === 0 ? { ...variant, [field]: value } : variant,
+        ),
+      };
+    });
   };
 
   const updateVariant = (index, field, value) => {
@@ -1421,6 +1443,43 @@ const AdminProductForm = () => {
         ) : (
           <>
             <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 space-y-4">
+              <div>
+                <p className="text-sm font-semibold text-white">Pricing</p>
+                <p className="text-xs text-slate-400">
+                  Set default pricing for this product. You can still edit each variant below.
+                </p>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <label className="text-xs uppercase tracking-[0.3em] text-slate-400">Price</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={primaryVariant.price}
+                    onChange={(event) => updatePrimaryPricing('price', event.target.value)}
+                    className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white focus:border-emerald-400 focus:outline-none"
+                    placeholder="0.00"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-[0.3em] text-slate-400">
+                    Compare At Price
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={primaryVariant.compareAtPrice}
+                    onChange={(event) =>
+                      updatePrimaryPricing('compareAtPrice', event.target.value)
+                    }
+                    className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white focus:border-emerald-400 focus:outline-none"
+                    placeholder="0.00"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 space-y-4">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-semibold text-white">Options</p>
@@ -1510,6 +1569,13 @@ const AdminProductForm = () => {
                 <p className="text-xs text-slate-500">No variants yet.</p>
               ) : (
                 <div className="space-y-4">
+                  <div className="hidden md:grid md:grid-cols-5 gap-2 px-1 text-[11px] uppercase tracking-[0.2em] text-slate-500">
+                    <span>Sku</span>
+                    <span>Price</span>
+                    <span>Compare At</span>
+                    <span>Inventory</span>
+                    <span>Barcode</span>
+                  </div>
                   {form.variants.map((variant, index) => (
                     <div key={`variant-${index}`} className="rounded-xl border border-slate-800 p-4 space-y-3">
                       {optionList.length ? (

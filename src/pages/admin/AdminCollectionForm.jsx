@@ -313,6 +313,19 @@ const AdminCollectionForm = () => {
   const visibleProductIds = filteredProducts.map((product) => product.id).filter(Boolean);
   const allVisibleSelected =
     visibleProductIds.length > 0 && visibleProductIds.every((productId) => selectedProductIds.includes(productId));
+  const getProductPreviewImage = (product) => {
+    if (!product) return '';
+    if (Array.isArray(product.media)) {
+      const image =
+        product.media.find((item) => item?.type === 'IMAGE' && item?.url) ||
+        product.media.find((item) => item?.url);
+      if (image?.url) return image.url;
+    }
+    if (product.featuredImage?.url) return product.featuredImage.url;
+    if (product.image?.url) return product.image.url;
+    if (typeof product.imageUrl === 'string') return product.imageUrl;
+    return '';
+  };
 
   return (
     <div className="space-y-6">
@@ -580,6 +593,7 @@ const AdminCollectionForm = () => {
               <div className="divide-y divide-slate-800">
                 {filteredProducts.map((product) => {
                   const selected = selectedProductIds.includes(product.id);
+                  const previewImage = getProductPreviewImage(product);
                   return (
                     <label
                       key={product.id}
@@ -593,6 +607,20 @@ const AdminCollectionForm = () => {
                         onChange={() => toggleProductSelection(product.id)}
                         className="h-4 w-4 rounded border-slate-600 bg-slate-950 text-emerald-400 focus:ring-emerald-400"
                       />
+                      <div className="h-10 w-10 shrink-0 overflow-hidden rounded-lg border border-slate-700 bg-slate-900">
+                        {previewImage ? (
+                          <img
+                            src={previewImage}
+                            alt={product.title || 'Product image'}
+                            className="h-full w-full object-cover"
+                            loading="lazy"
+                          />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center text-[10px] text-slate-500">
+                            No Img
+                          </div>
+                        )}
+                      </div>
                       <div className="min-w-0">
                         <p className="text-sm text-white truncate">{product.title || 'Untitled product'}</p>
                         <p className="text-xs text-slate-400 truncate">{product.handle || 'no-handle'}</p>

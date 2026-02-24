@@ -1,7 +1,14 @@
 const { PrismaClient } = require('@prisma/client');
 const { PrismaPg } = require('@prisma/adapter-pg');
+const dotenv = require('dotenv');
+const path = require('node:path');
 
-const url = 'postgresql://neondb_owner:npg_d0IjZD4EOyMf@ep-steep-tooth-a1t2haht-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require';
+dotenv.config({ path: path.resolve(__dirname, '../.env'), override: true });
+
+const url = process.env.DATABASE_URL;
+if (!url) {
+    throw new Error('DATABASE_URL is not set');
+}
 const adapter = new PrismaPg({ connectionString: url });
 const p = new PrismaClient({ adapter });
 
