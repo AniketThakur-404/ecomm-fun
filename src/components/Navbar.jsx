@@ -16,9 +16,8 @@ const Navbar = ({ onSearchClick, onCartClick }) => {
     { label: 'HOME', href: '/' },
     { label: 'SHOP', href: '/products' },
     { label: 'BLOG', href: '/blog' },
-    { label: 'PRIVACY POLICY', href: '/legal/privacy-policy' },
-    { label: 'CONTACT US', href: '/contact' },
     { label: 'ABOUT US', href: '/about' },
+    { label: 'CONTACT US', href: '/contact' },
   ];
 
   return (
@@ -26,7 +25,7 @@ const Navbar = ({ onSearchClick, onCartClick }) => {
       <div className="site-shell flex h-20 items-center gap-3 md:h-[88px] md:gap-4">
         <div className="flex flex-shrink-0 items-center gap-2 md:gap-3">
           <button
-            className="xl:hidden rounded-md p-2 text-[var(--color-text-main)] hover:bg-[var(--color-bg-surface-muted)]"
+            className="lg:hidden rounded-md p-2 text-[var(--color-text-main)] hover:bg-[var(--color-bg-surface-muted)]"
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             aria-label={mobileMenuOpen ? 'Close menu' : 'Open menu'}
           >
@@ -42,12 +41,12 @@ const Navbar = ({ onSearchClick, onCartClick }) => {
           </Link>
         </div>
 
-        <nav className="hidden min-w-0 flex-1 items-center justify-center gap-3 xl:flex xl:gap-5">
+        <nav className="hidden min-w-0 flex-1 items-center justify-center gap-6 lg:flex xl:gap-10">
           {navLinks.map((link) => (
             <Link
               key={link.label}
               to={link.href}
-              className="relative whitespace-nowrap py-8 text-sm font-bold tracking-wide text-[var(--color-text-main)] transition-colors hover:text-[var(--color-primary)]"
+              className="relative whitespace-nowrap py-8 text-[13px] font-bold tracking-widest text-gray-800 transition-colors hover:text-black"
             >
               {link.label}
               {link.isNew && (
@@ -60,14 +59,14 @@ const Navbar = ({ onSearchClick, onCartClick }) => {
         </nav>
 
         <div className="ml-auto flex flex-shrink-0 items-center gap-2 md:gap-3">
-          <div className="group relative hidden items-center rounded-md bg-[var(--color-bg-surface-muted)] transition-shadow focus-within:ring-1 focus-within:ring-[var(--color-border-strong)] lg:flex lg:w-44 xl:w-52">
+          <div className="group relative hidden items-center rounded-full bg-gray-100 transition-shadow focus-within:ring-1 focus-within:ring-black lg:flex lg:w-48 xl:w-64">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <Search className="h-4 w-4 text-[var(--color-text-muted)]" />
+              <Search className="h-4 w-4 text-gray-400" />
             </div>
             <input
               type="text"
               placeholder="Search for items..."
-              className="block w-full rounded-md bg-transparent py-2.5 pl-10 pr-3 text-sm text-[var(--color-text-main)] placeholder-[var(--color-text-muted)] focus:outline-none"
+              className="block w-full rounded-full bg-transparent py-2.5 pl-10 pr-3 text-[13px] font-medium text-gray-900 placeholder-gray-500 focus:outline-none"
               onClick={onSearchClick}
               onFocus={onSearchClick}
               readOnly
@@ -133,18 +132,18 @@ const Navbar = ({ onSearchClick, onCartClick }) => {
       </div>
 
       {mobileMenuOpen && (
-        <div className="absolute left-0 top-full z-40 w-full border-b border-[var(--color-border)] bg-[var(--color-bg-surface)] px-5 py-4 shadow-lg xl:hidden">
+        <div className="absolute left-0 top-full z-40 w-full border-b border-[var(--color-border)] bg-[var(--color-bg-surface)] px-5 py-4 shadow-lg lg:hidden">
           <div className="flex flex-col gap-2">
-          {navLinks.map((link) => (
-            <Link
-              key={link.label}
-              to={link.href}
-              className="rounded-md border border-transparent px-2 py-2 text-sm font-bold text-[var(--color-text-main)] hover:border-[var(--color-border)] hover:bg-[var(--color-bg-surface-muted)]"
-              onClick={() => setMobileMenuOpen(false)}
-            >
-              {link.label}
-            </Link>
-          ))}
+            {navLinks.map((link) => (
+              <Link
+                key={link.label}
+                to={link.href}
+                className="rounded-md border border-transparent px-2 py-2 text-sm font-bold text-[var(--color-text-main)] hover:border-[var(--color-border)] hover:bg-[var(--color-bg-surface-muted)]"
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                {link.label}
+              </Link>
+            ))}
           </div>
         </div>
       )}

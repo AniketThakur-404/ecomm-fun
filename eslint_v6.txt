@@ -1,0 +1,7 @@
+﻿
+D:\full code\my-app\src\pages\admin\AdminProductForm.jsx
+  1917:7  error  Parsing error: Expected corresponding JSX closing tag for <form>
+
+Γ£û 1 problem (1 error, 0 warnings)
+
+

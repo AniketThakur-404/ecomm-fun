@@ -8,6 +8,9 @@ import {
   adminUpdateCollection,
 } from '../../lib/api';
 import { useAdminAuth } from '../../contexts/admin-auth-context';
+import { useAdminToast } from '../../components/admin/AdminToaster';
+import { motion } from 'framer-motion';
+import { FolderTree, Package, Image as ImageIcon, Sparkles, Settings2, Save, X, Search } from 'lucide-react';
 
 const slugify = (value) =>
   value
@@ -94,11 +97,11 @@ const AdminCollectionForm = () => {
   const { id } = useParams();
   const isNew = !id || id === 'new';
   const { token } = useAdminAuth();
+  const toast = useAdminToast();
   const navigate = useNavigate();
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
   const [collections, setCollections] = useState([]);
   const [products, setProducts] = useState([]);
   const [productsLoading, setProductsLoading] = useState(false);
@@ -207,9 +210,11 @@ const AdminCollectionForm = () => {
             .filter(Boolean),
         );
       })
-      .catch((err) => setError(err?.message || 'Unable to load collection.'))
+      .catch((err) => {
+        toast.error('Load Failed', err?.message || 'Unable to load collection details.');
+      })
       .finally(() => setLoading(false));
-  }, [id, isNew, token]);
+  }, [id, isNew, token, toast]);
 
   useEffect(() => {
     if (!isNew || handleTouched) return;
@@ -261,7 +266,6 @@ const AdminCollectionForm = () => {
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-    setError('');
     setSaving(true);
 
     const suggestedHandle = buildSuggestedHandle({
@@ -284,8 +288,10 @@ const AdminCollectionForm = () => {
     try {
       if (isNew) {
         await adminCreateCollection(token, payload);
+        toast.success('Collection Created', 'The new collection is now live.');
       } else {
         await adminUpdateCollection(token, id, payload);
+        toast.success('Collection Updated', 'Changes have been saved successfully.');
       }
       navigate('/admin/collections');
     } catch (err) {
@@ -296,13 +302,14 @@ const AdminCollectionForm = () => {
           parentId: form.parentId,
           collections,
         });
-        setError(
+        toast.error(
+          'Handle Conflict',
           fallback
             ? `Collection handle already exists. Try "${fallback}" or set a custom unique handle.`
-            : 'Collection handle already exists. Set a custom unique handle.',
+            : 'Collection handle already exists. Set a custom unique handle.'
         );
       } else {
-        setError(message);
+        toast.error('Save Failed', message);
       }
     } finally {
       setSaving(false);
@@ -328,335 +335,391 @@ const AdminCollectionForm = () => {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="space-y-6 max-w-7xl mx-auto"
+    >
+      {/* Header Sticky Bar */}
+      <div className="sticky top-0 z-20 -mx-4 sm:-mx-6 px-4 sm:px-6 py-4 bg-[#0d1323]/80 backdrop-blur-xl border-b border-slate-800/60 flex flex-wrap items-center justify-between gap-4">
         <div>
-          <p className="text-xs uppercase tracking-[0.3em] text-slate-400">
+          <p className="text-xs uppercase tracking-[0.3em] text-pink-400 font-bold mb-1 flex items-center gap-2">
+            <FolderTree className="w-4 h-4" />
             {isNew ? 'Create Collection' : 'Edit Collection'}
           </p>
           <h2 className="text-2xl font-bold text-white">
-            {isNew ? 'Build a new collection' : form.title || 'Collection detail'}
+            {isNew ? 'New Category' : form.title || 'Collection detail'}
           </h2>
         </div>
-        <Link
-          to="/admin/collections"
-          className="rounded-lg border border-slate-700 px-4 py-2 text-sm font-semibold text-slate-200 hover:bg-slate-800 transition"
-        >
-          Back to collections
-        </Link>
+        <div className="flex items-center gap-3">
+          <Link
+            to="/admin/collections"
+            className="flex items-center gap-2 rounded-xl border border-slate-700/50 bg-slate-800/50 px-5 py-2.5 text-xs font-bold text-slate-300 hover:bg-slate-700 hover:text-white transition-all"
+          >
+            <X className="w-4 h-4" />
+            Discard
+          </Link>
+          <button
+            onClick={handleSubmit}
+            disabled={saving || loading}
+            className="flex items-center gap-2 rounded-xl bg-pink-600 px-6 py-2.5 text-xs font-bold text-white hover:bg-pink-500 transition-all shadow-lg shadow-pink-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Save className="w-4 h-4" />
+            {saving ? 'Saving...' : 'Save Collection'}
+          </button>
+        </div>
       </div>
 
-      {error ? (
-        <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
-          {error}
-        </div>
-      ) : null}
+      <form onSubmit={handleSubmit} className="grid grid-cols-1 xl:grid-cols-3 gap-6">
 
-      <form onSubmit={handleSubmit} className="space-y-6">
-        <div className="grid gap-6 lg:grid-cols-2">
-          <div className="space-y-4">
-            <div>
-              <label className="text-xs uppercase tracking-[0.3em] text-slate-400">Title</label>
-              <input
-                type="text"
-                value={form.title}
-                onChange={(event) => handleFieldChange('title', event.target.value)}
-                className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white focus:border-emerald-400 focus:outline-none"
-                placeholder="Collection title"
-                required
-              />
+        {/* Main Column */}
+        <div className="xl:col-span-2 space-y-6">
+
+          {/* Basic Details Card */}
+          <div className="rounded-2xl border border-slate-800/60 bg-[#0d1323] p-6 shadow-xl relative overflow-hidden">
+            <div className="absolute top-0 right-0 p-32 bg-pink-500/5 blur-[120px] pointer-events-none rounded-full" />
+            <h3 className="text-sm font-bold text-slate-200 uppercase tracking-widest mb-6 flex items-center gap-2">
+              <Settings2 className="w-4 h-4 text-pink-400" />
+              General Information
+            </h3>
+
+            <div className="space-y-5 relative">
+              <div>
+                <label className="text-xs font-bold uppercase tracking-widest text-slate-400">Collection Title</label>
+                <input
+                  type="text"
+                  value={form.title}
+                  onChange={(event) => handleFieldChange('title', event.target.value)}
+                  className="mt-2 w-full rounded-xl border border-slate-700/50 bg-slate-900/50 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-pink-500 focus:ring-1 focus:ring-pink-500 transition-all outline-none"
+                  placeholder="e.g. Summer Collection 2024"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold uppercase tracking-widest text-slate-400">Description</label>
+                <textarea
+                  value={form.descriptionHtml}
+                  onChange={(event) => handleFieldChange('descriptionHtml', event.target.value)}
+                  className="mt-2 w-full rounded-xl border border-slate-700/50 bg-slate-900/50 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-pink-500 focus:ring-1 focus:ring-pink-500 transition-all outline-none min-h-[160px] resize-y"
+                  placeholder="Describe your collection..."
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold uppercase tracking-widest text-slate-400">Handle (URL Slug)</label>
+                <input
+                  type="text"
+                  value={form.handle}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    handleFieldChange('handle', value);
+                    setHandleTouched(value.trim().length > 0);
+                  }}
+                  className="mt-2 w-full rounded-xl border border-slate-700/50 bg-slate-900/50 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-pink-500 focus:ring-1 focus:ring-pink-500 transition-all outline-none"
+                  placeholder="Auto-generated if left blank"
+                />
+                <p className="mt-2 text-xs text-slate-500">
+                  Sub-collections auto-use parent handle prefix so each handle stays unique.
+                </p>
+              </div>
             </div>
+          </div>
+
+          {/* Media Card */}
+          <div className="rounded-2xl border border-slate-800/60 bg-[#0d1323] p-6 shadow-xl relative overflow-hidden">
+            <h3 className="text-sm font-bold text-slate-200 uppercase tracking-widest mb-6 flex items-center gap-2">
+              <ImageIcon className="w-4 h-4 text-emerald-400" />
+              Cover Image
+            </h3>
 
             <div>
-              <label className="text-xs uppercase tracking-[0.3em] text-slate-400">Handle</label>
-              <input
-                type="text"
-                value={form.handle}
-                onChange={(event) => {
-                  const value = event.target.value;
-                  handleFieldChange('handle', value);
-                  setHandleTouched(value.trim().length > 0);
-                }}
-                className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white focus:border-emerald-400 focus:outline-none"
-                placeholder="auto-generated from parent + title if left blank"
-              />
-              <p className="mt-1 text-[10px] text-slate-500">
-                Sub-collections auto-use parent handle prefix so each handle stays unique.
-              </p>
-            </div>
-
-            <div>
-              <label className="text-xs uppercase tracking-[0.3em] text-slate-400">Parent</label>
-              <select
-                value={form.parentId}
-                onChange={(event) => handleFieldChange('parentId', event.target.value)}
-                className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white focus:border-emerald-400 focus:outline-none"
-              >
-                <option value="">No parent (top-level collection)</option>
-                {parentOptions
-                  .filter((c) => !c.parentId)
-                  .map((collection) => (
-                    <option key={collection.id} value={collection.id}>
-                      {collection.title}
-                    </option>
-                  ))}
-              </select>
-              <p className="mt-1 text-[10px] text-slate-500">
-                Set a parent to make this a sub-collection (e.g. "Fair Skin" under "Skin Tone").
-              </p>
-            </div>
-
-            <div>
-              <label className="text-xs uppercase tracking-[0.3em] text-slate-400">Type</label>
-              <select
-                value={form.type}
-                onChange={(event) => handleFieldChange('type', event.target.value)}
-                className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white focus:border-emerald-400 focus:outline-none"
-              >
-                <option value="MANUAL">Manual</option>
-                <option value="AUTOMATED">Automated</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="text-xs uppercase tracking-[0.3em] text-slate-400">Image URL</label>
+              <label className="text-xs font-bold uppercase tracking-widest text-slate-400">Image URL</label>
               <input
                 type="text"
                 value={form.imageUrl}
                 onChange={(event) => handleFieldChange('imageUrl', event.target.value)}
-                className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white focus:border-emerald-400 focus:outline-none"
-                placeholder="https://"
+                className="mt-2 w-full rounded-xl border border-slate-700/50 bg-slate-900/50 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all outline-none"
+                placeholder="https://example.com/image.jpg"
               />
             </div>
-
-            {/* Show sub-collections when editing a parent */}
-            {!isNew && (() => {
-              const children = collections.filter((c) => c.parentId === id);
-              if (!children.length) return null;
-              return (
-                <div className="rounded-lg border border-slate-700 bg-slate-900/50 p-3 space-y-2">
-                  <p className="text-xs uppercase tracking-[0.2em] text-slate-400">
-                    Sub-Collections ({children.length})
-                  </p>
-                  <div className="space-y-1">
-                    {children.map((child) => (
-                      <Link
-                        key={child.id}
-                        to={`/admin/collections/${child.id}`}
-                        className="flex items-center gap-2 rounded px-2 py-1.5 text-sm text-slate-300 hover:bg-slate-800 hover:text-white transition"
-                      >
-                        <span className="text-slate-600 text-xs">└─</span>
-                        {child.title}
-                      </Link>
-                    ))}
-                  </div>
-                </div>
-              );
-            })()}
           </div>
 
-          <div className="space-y-4">
-            <div>
-              <label className="text-xs uppercase tracking-[0.3em] text-slate-400">Description</label>
-              <textarea
-                value={form.descriptionHtml}
-                onChange={(event) => handleFieldChange('descriptionHtml', event.target.value)}
-                className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white focus:border-emerald-400 focus:outline-none min-h-[160px]"
-                placeholder="Collection description"
-              />
+          {/* Products Association Card */}
+          <div className="rounded-2xl border border-slate-800/60 bg-[#0d1323] p-6 shadow-xl">
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+              <h3 className="text-sm font-bold text-slate-200 uppercase tracking-widest flex items-center gap-2">
+                <Package className="w-4 h-4 text-indigo-400" />
+                Included Products
+              </h3>
+              <span className="text-xs font-bold text-indigo-300 bg-indigo-500/10 px-3 py-1 rounded-full border border-indigo-500/20">{selectedProductIds.length} selected</span>
             </div>
 
-            <div className="rounded-lg border border-slate-700 bg-slate-900/50 p-4 space-y-4">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Storefront Flow</p>
-                  <p className="text-xs text-slate-500 mt-1">
-                    Control where this collection appears in Skin Tone + Occasion browsing.
-                  </p>
-                </div>
-                <label className="inline-flex items-center gap-2 text-xs text-slate-300">
-                  <input
-                    type="checkbox"
-                    checked={form.flowEnabled}
-                    onChange={(event) => handleFieldChange('flowEnabled', event.target.checked)}
-                    className="h-4 w-4 rounded border-slate-600 bg-slate-950 text-emerald-400 focus:ring-emerald-400"
-                  />
-                  Enable
-                </label>
+            <div className="flex flex-wrap items-center gap-3 mb-4">
+              <div className="relative flex-1 min-w-[240px]">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                <input
+                  type="text"
+                  value={productSearch}
+                  onChange={(event) => setProductSearch(event.target.value)}
+                  placeholder="Search products by title, handle, vendor..."
+                  className="w-full rounded-xl border border-slate-700/50 bg-slate-900/50 pl-10 pr-4 py-2.5 text-sm text-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all outline-none"
+                />
               </div>
-
-              {form.flowEnabled ? (
-                <div className="space-y-4">
-                  <div>
-                    <p className="text-[11px] uppercase tracking-[0.2em] text-slate-400 mb-2">Skintones</p>
-                    <div className="flex flex-wrap gap-2">
-                      {SKINTONE_OPTIONS.map((option) => {
-                        const checked = form.flowSkintones.includes(option.value);
-                        return (
-                          <button
-                            key={option.value}
-                            type="button"
-                            onClick={() => toggleChoice('flowSkintones', option.value)}
-                            className={`rounded-full border px-3 py-1 text-xs transition ${
-                              checked
-                                ? 'border-emerald-400 bg-emerald-400/10 text-emerald-300'
-                                : 'border-slate-700 text-slate-300 hover:border-slate-500'
-                            }`}
-                          >
-                            {option.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  <div>
-                    <p className="text-[11px] uppercase tracking-[0.2em] text-slate-400 mb-2">Occasions</p>
-                    <div className="flex flex-wrap gap-2">
-                      {OCCASION_OPTIONS.map((option) => {
-                        const checked = form.flowOccasions.includes(option.value);
-                        return (
-                          <button
-                            key={option.value}
-                            type="button"
-                            onClick={() => toggleChoice('flowOccasions', option.value)}
-                            className={`rounded-full border px-3 py-1 text-xs transition ${
-                              checked
-                                ? 'border-emerald-400 bg-emerald-400/10 text-emerald-300'
-                                : 'border-slate-700 text-slate-300 hover:border-slate-500'
-                            }`}
-                          >
-                            {option.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-              ) : null}
+              <button
+                type="button"
+                onClick={() =>
+                  setSelectedProductIds((prev) =>
+                    Array.from(new Set([...prev, ...visibleProductIds])),
+                  )
+                }
+                className="rounded-xl border border-slate-700/50 bg-slate-800/50 px-4 py-2.5 text-xs font-bold text-slate-300 hover:bg-slate-700 hover:text-white transition-colors"
+              >
+                Select Visible
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedProductIds((prev) => prev.filter((id) => !visibleProductIds.includes(id)))}
+                className="rounded-xl border border-slate-700/50 bg-slate-800/50 px-4 py-2.5 text-xs font-bold text-slate-300 hover:bg-slate-700 hover:text-white transition-colors"
+              >
+                Unselect Visible
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedProductIds([])}
+                className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-2.5 text-xs font-bold text-rose-300 hover:bg-rose-500 hover:text-white transition-colors"
+              >
+                Clear All
+              </button>
             </div>
+
+            <div className="rounded-xl border border-slate-800/60 bg-slate-900/30 max-h-[400px] overflow-y-auto overflow-x-hidden">
+              {productsLoading ? (
+                <div className="flex flex-col items-center justify-center p-12">
+                  <div className="w-6 h-6 rounded-full border-2 border-slate-600 border-t-indigo-500 animate-spin mb-3"></div>
+                  <p className="text-xs text-slate-400 uppercase tracking-widest font-medium">Loading Catalog...</p>
+                </div>
+              ) : filteredProducts.length === 0 ? (
+                <div className="flex flex-col items-center justify-center p-12 text-slate-500">
+                  <Package className="w-10 h-10 opacity-20 mb-3" />
+                  <p className="text-sm font-medium">No products found</p>
+                </div>
+              ) : (
+                <div className="divide-y divide-slate-800/50">
+                  {filteredProducts.map((product) => {
+                    const selected = selectedProductIds.includes(product.id);
+                    const previewImage = getProductPreviewImage(product);
+                    return (
+                      <label
+                        key={product.id}
+                        className={`w-full group flex items-center justify-between p-4 cursor-pointer transition-colors ${selected ? 'bg-indigo-500/5 hover:bg-indigo-500/10' : 'hover:bg-slate-800/40'
+                          }`}
+                      >
+                        <div className="flex items-center gap-4 min-w-0">
+                          <div className="relative flex items-center justify-center">
+                            <input
+                              type="checkbox"
+                              checked={selected}
+                              onChange={() => toggleProductSelection(product.id)}
+                              className="peer sr-only"
+                            />
+                            <div className={`w-5 h-5 rounded border ${selected ? 'bg-indigo-500 border-indigo-500 text-white' : 'bg-slate-900 border-slate-600'} flex items-center justify-center transition-colors group-hover:border-indigo-400`}>
+                              {selected && <Save className="w-3 h-3" />}
+                            </div>
+                          </div>
+
+                          <div className="h-12 w-12 shrink-0 overflow-hidden rounded-lg border border-slate-700/50 bg-slate-900">
+                            {previewImage ? (
+                              <img
+                                src={previewImage}
+                                alt={product.title || 'Product'}
+                                className="h-full w-full object-cover transition-transform group-hover:scale-110"
+                                loading="lazy"
+                              />
+                            ) : (
+                              <div className="flex h-full w-full items-center justify-center text-[10px] text-slate-500 uppercase font-bold">
+                                No Img
+                              </div>
+                            )}
+                          </div>
+                          <div className="min-w-0">
+                            <p className={`text-sm font-bold truncate transition-colors ${selected ? 'text-white' : 'text-slate-300 group-hover:text-white'}`}>
+                              {product.title || 'Untitled product'}
+                            </p>
+                            <p className="text-xs text-slate-500 truncate mt-0.5">/{product.handle || 'no-handle'}</p>
+                          </div>
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {!allVisibleSelected && visibleProductIds.length > 0 && (
+              <p className="mt-3 text-[11px] text-slate-500 font-medium">
+                Showing {visibleProductIds.length} products from your catalog.
+              </p>
+            )}
           </div>
         </div>
 
-        <div className="rounded-lg border border-slate-700 bg-slate-900/50 p-4 space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Collection Products</p>
-              <p className="text-xs text-slate-500 mt-1">
-                Select products to include in this collection.
-              </p>
+        {/* Sidebar Column */}
+        <div className="space-y-6">
+
+          {/* Organization Card */}
+          <div className="rounded-2xl border border-slate-800/60 bg-[#0d1323] p-6 shadow-xl">
+            <h3 className="text-sm font-bold text-slate-200 uppercase tracking-widest mb-6 flex items-center gap-2">
+              <FolderTree className="w-4 h-4 text-amber-400" />
+              Organization
+            </h3>
+
+            <div className="space-y-5">
+              <div>
+                <label className="text-xs font-bold uppercase tracking-widest text-slate-400">Parent Collection</label>
+                <div className="relative mt-2">
+                  <select
+                    value={form.parentId}
+                    onChange={(event) => handleFieldChange('parentId', event.target.value)}
+                    className="w-full rounded-xl border border-slate-700/50 bg-slate-900/50 pl-4 py-3 pr-10 text-sm text-white focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-all outline-none appearance-none cursor-pointer"
+                  >
+                    <option value="">None (Top-Level)</option>
+                    {parentOptions
+                      .filter((c) => !c.parentId)
+                      .map((collection) => (
+                        <option key={collection.id} value={collection.id}>
+                          {collection.title}
+                        </option>
+                      ))}
+                  </select>
+                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-400">
+                    <svg className="h-4 w-4 fill-current" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z" /></svg>
+                  </div>
+                </div>
+                <p className="mt-2 text-[10px] text-slate-500">
+                  Nest this collection under a broader category.
+                </p>
+              </div>
+
+              {!isNew && (() => {
+                const children = collections.filter((c) => c.parentId === id);
+                if (!children.length) return null;
+                return (
+                  <div className="rounded-xl border border-slate-800/60 bg-slate-900/30 p-4 space-y-3 mt-4">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                      Sub-Collections ({children.length})
+                    </p>
+                    <div className="space-y-1.5">
+                      {children.map((child) => (
+                        <Link
+                          key={child.id}
+                          to={`/admin/collections/${child.id}`}
+                          className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold text-slate-300 hover:bg-slate-800 hover:text-white transition-colors border border-transparent hover:border-slate-700/50"
+                        >
+                          <span className="text-slate-600 opacity-50">└─</span>
+                          {child.title}
+                        </Link>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              <div className="pt-4 border-t border-slate-800/60">
+                <label className="text-xs font-bold uppercase tracking-widest text-slate-400">Assignment Type</label>
+                <div className="relative mt-2">
+                  <select
+                    value={form.type}
+                    onChange={(event) => handleFieldChange('type', event.target.value)}
+                    className="w-full rounded-xl border border-slate-700/50 bg-slate-900/50 pl-4 py-3 pr-10 text-sm text-white focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-all outline-none appearance-none cursor-pointer"
+                  >
+                    <option value="MANUAL">Manual Selection</option>
+                    <option value="AUTOMATED">Automated (Rules)</option>
+                  </select>
+                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-400">
+                    <svg className="h-4 w-4 fill-current" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z" /></svg>
+                  </div>
+                </div>
+              </div>
             </div>
-            <span className="text-xs text-emerald-300">{selectedProductIds.length} selected</span>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <input
-              type="text"
-              value={productSearch}
-              onChange={(event) => setProductSearch(event.target.value)}
-              placeholder="Search products by title, handle, vendor..."
-              className="min-w-[240px] flex-1 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white focus:border-emerald-400 focus:outline-none"
-            />
-            <button
-              type="button"
-              onClick={() =>
-                setSelectedProductIds((prev) =>
-                  Array.from(new Set([...prev, ...visibleProductIds])),
-                )
-              }
-              className="rounded-lg border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-200 hover:bg-slate-800"
-            >
-              Select Visible
-            </button>
-            <button
-              type="button"
-              onClick={() => setSelectedProductIds((prev) => prev.filter((idValue) => !visibleProductIds.includes(idValue)))}
-              className="rounded-lg border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-200 hover:bg-slate-800"
-            >
-              Unselect Visible
-            </button>
-            <button
-              type="button"
-              onClick={() => setSelectedProductIds([])}
-              className="rounded-lg border border-rose-500/40 px-3 py-2 text-xs font-semibold text-rose-200 hover:bg-rose-500/10"
-            >
-              Clear All
-            </button>
-          </div>
+          {/* Storefront Flow Card */}
+          <div className="rounded-2xl border border-slate-800/60 bg-[#0d1323] p-6 shadow-xl relative overflow-hidden">
+            <div className="absolute top-0 right-0 p-32 bg-purple-500/5 blur-[120px] pointer-events-none rounded-full" />
 
-          <div className="rounded-lg border border-slate-800 bg-slate-950 max-h-80 overflow-y-auto">
-            {productsLoading ? (
-              <div className="px-4 py-8 text-center text-xs text-slate-400">Loading products...</div>
-            ) : filteredProducts.length === 0 ? (
-              <div className="px-4 py-8 text-center text-xs text-slate-400">No products found.</div>
-            ) : (
-              <div className="divide-y divide-slate-800">
-                {filteredProducts.map((product) => {
-                  const selected = selectedProductIds.includes(product.id);
-                  const previewImage = getProductPreviewImage(product);
-                  return (
-                    <label
-                      key={product.id}
-                      className={`w-full text-left px-4 py-3 flex items-center gap-3 transition ${
-                        selected ? 'bg-emerald-500/10' : 'hover:bg-slate-900'
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selected}
-                        onChange={() => toggleProductSelection(product.id)}
-                        className="h-4 w-4 rounded border-slate-600 bg-slate-950 text-emerald-400 focus:ring-emerald-400"
-                      />
-                      <div className="h-10 w-10 shrink-0 overflow-hidden rounded-lg border border-slate-700 bg-slate-900">
-                        {previewImage ? (
-                          <img
-                            src={previewImage}
-                            alt={product.title || 'Product image'}
-                            className="h-full w-full object-cover"
-                            loading="lazy"
-                          />
-                        ) : (
-                          <div className="flex h-full w-full items-center justify-center text-[10px] text-slate-500">
-                            No Img
-                          </div>
-                        )}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-sm text-white truncate">{product.title || 'Untitled product'}</p>
-                        <p className="text-xs text-slate-400 truncate">{product.handle || 'no-handle'}</p>
-                      </div>
-                    </label>
-                  );
-                })}
+            <div className="flex items-start justify-between gap-4 mb-6">
+              <div>
+                <h3 className="text-sm font-bold text-slate-200 uppercase tracking-widest flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-purple-400" />
+                  Storefront Flow
+                </h3>
+                <p className="text-[11px] text-slate-500 mt-2 font-medium">
+                  Control visibility in Skin Tone + Occasion filter widgets.
+                </p>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer shrink-0 mt-1">
+                <input
+                  type="checkbox"
+                  checked={form.flowEnabled}
+                  onChange={(event) => handleFieldChange('flowEnabled', event.target.checked)}
+                  className="sr-only peer"
+                />
+                <div className="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-purple-500"></div>
+              </label>
+            </div>
+
+            {form.flowEnabled && (
+              <div className="space-y-6 pt-4 border-t border-slate-800/60 animate-in fade-in slide-in-from-top-2">
+                <div>
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 block mb-3">Target Skintones</label>
+                  <div className="flex flex-wrap gap-2">
+                    {SKINTONE_OPTIONS.map((option) => {
+                      const checked = form.flowSkintones.includes(option.value);
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() => toggleChoice('flowSkintones', option.value)}
+                          className={`rounded-full border px-4 py-1.5 text-[11px] font-bold transition-all ${checked
+                            ? 'border-purple-500 bg-purple-500/20 text-purple-300 shadow-[0_0_10px_rgba(168,85,247,0.2)]'
+                            : 'border-slate-700/50 bg-slate-800/30 text-slate-400 hover:border-slate-600 hover:text-slate-200'
+                            }`}
+                        >
+                          {option.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 block mb-3">Target Occasions</label>
+                  <div className="flex flex-wrap gap-2">
+                    {OCCASION_OPTIONS.map((option) => {
+                      const checked = form.flowOccasions.includes(option.value);
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() => toggleChoice('flowOccasions', option.value)}
+                          className={`rounded-full border px-4 py-1.5 text-[11px] font-bold transition-all ${checked
+                            ? 'border-purple-500 bg-purple-500/20 text-purple-300 shadow-[0_0_10px_rgba(168,85,247,0.2)]'
+                            : 'border-slate-700/50 bg-slate-800/30 text-slate-400 hover:border-slate-600 hover:text-slate-200'
+                            }`}
+                        >
+                          {option.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
             )}
           </div>
-
-          {!allVisibleSelected && visibleProductIds.length > 0 ? (
-            <p className="text-[11px] text-slate-500">
-              Showing {visibleProductIds.length} products from your catalog.
-            </p>
-          ) : null}
-        </div>
-
-        <div className="flex items-center justify-end gap-3">
-          <button
-            type="button"
-            onClick={() => navigate('/admin/collections')}
-            className="rounded-lg border border-slate-700 px-5 py-2 text-sm font-semibold text-slate-200 hover:bg-slate-800"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={saving || loading}
-            className="rounded-lg bg-emerald-400 px-6 py-2 text-sm font-semibold text-slate-950 hover:bg-emerald-300 transition disabled:opacity-60"
-          >
-            {saving ? 'Saving...' : isNew ? 'Create Collection' : 'Save Changes'}
-          </button>
         </div>
       </form>
-    </div>
+    </motion.div>
   );
 };
 

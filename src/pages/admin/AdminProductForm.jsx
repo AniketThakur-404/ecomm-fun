@@ -747,7 +747,7 @@ const AdminProductForm = () => {
               : Number(bundlePriceValue),
             compareAtPrice:
               bundleBaseVariant.compareAtPrice === '' ||
-              bundleBaseVariant.compareAtPrice === undefined
+                bundleBaseVariant.compareAtPrice === undefined
                 ? undefined
                 : Number(bundleBaseVariant.compareAtPrice),
             barcode: bundleBaseVariant.barcode?.trim() || undefined,

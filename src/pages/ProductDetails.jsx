@@ -493,13 +493,13 @@ const ProductDetails = () => {
       const targetSize = normaliseTokenValue(size);
       const targetColor = normaliseTokenValue(color);
       const matches = item.variants.find((variant) => {
-      const sizeMatch =
-        !targetSize ||
-        variant?.selectedOptions?.some(
-          (opt) =>
-            isSizeOptionName(opt?.name) &&
-            normaliseTokenValue(opt?.value) === targetSize,
-        );
+        const sizeMatch =
+          !targetSize ||
+          variant?.selectedOptions?.some(
+            (opt) =>
+              isSizeOptionName(opt?.name) &&
+              normaliseTokenValue(opt?.value) === targetSize,
+          );
         const colorMatch =
           !targetColor ||
           variant?.selectedOptions?.some((opt) => {
@@ -1400,11 +1400,10 @@ const ProductDetails = () => {
                               key={`rating-${value}`}
                               type="button"
                               onClick={() => handleReviewFieldChange('rating', value)}
-                              className={`h-9 w-9 rounded border text-sm font-semibold transition ${
-                                Number(reviewForm.rating) === value
-                                  ? 'border-black bg-black text-white'
-                                  : 'border-gray-300 text-gray-700 hover:border-gray-900'
-                              }`}
+                              className={`h-9 w-9 rounded border text-sm font-semibold transition ${Number(reviewForm.rating) === value
+                                ? 'border-black bg-black text-white'
+                                : 'border-gray-300 text-gray-700 hover:border-gray-900'
+                                }`}
                             >
                               {value}
                             </button>
@@ -1490,13 +1489,13 @@ const ProductDetails = () => {
         </div>
       )}
 
-      <div className="fixed bottom-[68px] left-0 right-0 z-40 bg-white/98 px-4 pb-2 pt-3 shadow-[0_-4px_10px_rgba(0,0,0,0.08)] lg:hidden">
-          <button
-            onClick={handleAddToCart}
-            className="flex h-12 w-full items-center justify-center rounded-md bg-[var(--color-primary)] text-white transition-colors hover:bg-[var(--color-primary-dark)]"
-          >
-            <span className="text-sm font-bold uppercase tracking-[0.2em]">Add to Bag</span>
-          </button>
+      <div className="fixed bottom-[48px] left-0 right-0 z-40 bg-white/90 backdrop-blur-md px-4 pb-3 pt-3 flex items-center justify-center border-t border-gray-100 shadow-[0_-8px_20px_rgba(0,0,0,0.06)] lg:hidden">
+        <button
+          onClick={handleAddToCart}
+          className="flex h-12 w-[90%] md:w-[60%] lg:w-full max-w-sm items-center justify-center rounded-full bg-black text-white shadow-lg transition-transform active:scale-[0.98] hover:bg-gray-900"
+        >
+          <span className="text-sm font-bold uppercase tracking-[0.15em]">Add to Bag</span>
+        </button>
       </div>
 
     </div>

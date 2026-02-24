@@ -354,21 +354,21 @@ const ProfilePage = () => {
     return (
         <div className="min-h-screen bg-[var(--color-bg-page)]">
             <div className="site-shell pt-24 pb-14 space-y-8">
-                <div className="relative overflow-hidden rounded-2xl border border-pink-100 bg-gradient-to-r from-pink-50 via-orange-50 to-amber-50 p-6 shadow-sm">
+                <div className="relative overflow-hidden rounded-2xl border border-gray-200 bg-gradient-to-r from-gray-50 via-gray-100 to-gray-50 p-6 shadow-sm">
                     <div className="absolute inset-0 bg-white/40 pointer-events-none" aria-hidden="true"></div>
                     <div className="relative flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                         <div className="flex items-start gap-4">
-                            <div className="w-16 h-16 rounded-full bg-white/80 border border-pink-100 flex items-center justify-center text-pink-600 shadow-sm">
+                            <div className="w-16 h-16 rounded-full bg-white/80 border border-gray-200 flex items-center justify-center text-gray-900 shadow-sm">
                                 <User className="w-8 h-8" />
                             </div>
                             <div>
-                                <p className="text-sm font-semibold text-pink-700">Welcome back</p>
+                                <p className="text-sm font-semibold text-gray-600">Welcome back</p>
                                 <h1 className="text-3xl font-extrabold text-gray-900">
                                     {displayName}
                                 </h1>
                                 <div className="flex flex-wrap items-center gap-3 text-sm text-gray-700 mt-1">
                                     <span className="inline-flex items-center gap-2">
-                                        <Mail className="w-4 h-4 text-pink-600" /> {customer.email}
+                                        <Mail className="w-4 h-4 text-gray-900" /> {customer.email}
                                     </span>
                                 </div>
                             </div>
@@ -376,7 +376,7 @@ const ProfilePage = () => {
                         <div className="flex flex-wrap gap-2">
                             <Link
                                 to="/checkout/address"
-                                className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-full text-sm font-semibold bg-white/80 border border-pink-200 text-pink-700 hover:bg-white transition-colors"
+                                className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-full text-sm font-semibold bg-white/80 border border-gray-300 text-gray-800 hover:bg-white transition-colors"
                             >
                                 <MapPin className="w-4 h-4" />
                                 Manage addresses
@@ -409,7 +409,7 @@ const ProfilePage = () => {
                     <div className="space-y-4">
                         <div className="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm">
                             <div className="flex items-center gap-2 mb-4">
-                                <User className="w-4 h-4 text-pink-600" />
+                                <User className="w-4 h-4 text-gray-900" />
                                 <p className="text-sm font-semibold text-gray-900">Profile & contact</p>
                             </div>
                             <div className="space-y-5 text-sm text-gray-700">
@@ -443,7 +443,7 @@ const ProfilePage = () => {
                                     <button
                                         type="submit"
                                         disabled={profileSaving}
-                                            className="rounded-full bg-[var(--color-primary)] px-4 py-2 text-xs font-semibold uppercase tracking-wide text-white hover:bg-[var(--color-primary-dark)] disabled:cursor-not-allowed disabled:bg-gray-300"
+                                        className="rounded-full bg-[var(--color-primary)] px-4 py-2 text-xs font-semibold uppercase tracking-wide text-white hover:bg-[var(--color-primary-dark)] disabled:cursor-not-allowed disabled:bg-gray-300"
                                     >
                                         {profileSaving ? 'Saving...' : 'Save Profile'}
                                     </button>
@@ -518,7 +518,7 @@ const ProfilePage = () => {
                     <div className="lg:col-span-2 space-y-4">
                         <div className="flex flex-wrap items-center justify-between gap-3">
                             <div className="flex items-center gap-2">
-                                <Package className="w-5 h-5 text-pink-600" />
+                                <Package className="w-5 h-5 text-gray-900" />
                                 <div>
                                     <p className="text-lg font-extrabold text-gray-900">Orders & returns</p>
                                     <p className="text-sm text-gray-600">Live status for deliveries, returns, and refunds.</p>
@@ -536,7 +536,7 @@ const ProfilePage = () => {
                         {orders.length === 0 ? (
                             totalItems > 0 ? (
                                 <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
-                                    <div className="mx-auto mb-4 w-12 h-12 rounded-full bg-pink-50 text-pink-600 flex items-center justify-center">
+                                    <div className="mx-auto mb-4 w-12 h-12 rounded-full bg-gray-100 text-gray-900 flex items-center justify-center">
                                         <Package className="w-6 h-6" />
                                     </div>
                                     <p className="text-lg font-semibold text-gray-900 text-center">No orders yet</p>
@@ -596,7 +596,7 @@ const ProfilePage = () => {
                                 </div>
                             ) : (
                                 <div className="bg-white border border-gray-200 rounded-2xl p-8 text-center shadow-sm">
-                                    <div className="mx-auto mb-4 w-12 h-12 rounded-full bg-pink-50 text-pink-600 flex items-center justify-center">
+                                    <div className="mx-auto mb-4 w-12 h-12 rounded-full bg-gray-100 text-gray-900 flex items-center justify-center">
                                         <Package className="w-6 h-6" />
                                     </div>
                                     <p className="text-lg font-semibold text-gray-900">No orders yet</p>

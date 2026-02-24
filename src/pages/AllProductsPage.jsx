@@ -419,89 +419,105 @@ const AllProductsPage = ({ initialCategory = 'all' }) => {
         </h1>
       </div>
 
-      <div className="border-y border-[var(--color-border)] bg-[var(--color-bg-surface)] lg:hidden">
-        <div className="site-shell grid gap-2 py-3 sm:grid-cols-3">
-          <select
-            value={rawSkintone || 'all'}
-            onChange={(event) => updateFilter('skintone', event.target.value)}
-            className="rounded-md border border-[var(--color-border)] bg-white px-3 py-2 text-sm text-[var(--color-text-main)] focus:border-[var(--color-primary)] focus:outline-none"
-          >
-            <option value="all">Skin Tone</option>
-            <option value="fair">Fair</option>
-            <option value="neutral">Neutral</option>
-            <option value="dark">Dark</option>
-          </select>
+      {/* Mobile Filter Bar */}
+      <div className="border-b border-gray-100 bg-white lg:hidden sticky top-14 z-30">
+        <div className="site-shell py-3 overflow-x-auto no-scrollbar flex items-center gap-2">
 
-          <select
-            value={rawOccasion || 'all'}
-            onChange={(event) => updateFilter('occasion', event.target.value)}
-            className="rounded-md border border-[var(--color-border)] bg-white px-3 py-2 text-sm text-[var(--color-text-main)] focus:border-[var(--color-primary)] focus:outline-none"
-          >
-            <option value="all">Occasion</option>
-            <option value="date">Date Wear</option>
-            <option value="office">Office Wear</option>
-            <option value="puja">Puja/Festive</option>
-            <option value="party">Party</option>
-            <option value="casual">Casual</option>
-          </select>
+          <div className="relative flex-shrink-0">
+            <select
+              value={rawSkintone || 'all'}
+              onChange={(event) => updateFilter('skintone', event.target.value)}
+              className={`appearance-none rounded-full border px-4 py-1.5 text-xs font-bold transition-colors focus:outline-none pr-8 ${skintoneFilter ? 'bg-black text-white border-black' : 'bg-gray-50 text-gray-700 border-gray-200 hover:border-black'
+                }`}
+            >
+              <option value="all">Skin Tone</option>
+              <option value="fair">Fair</option>
+              <option value="neutral">Neutral</option>
+              <option value="dark">Dark</option>
+            </select>
+            <ChevronDown className={`absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-events-none ${skintoneFilter ? 'text-white' : 'text-gray-500'}`} />
+          </div>
 
-          <select
-            value={sortBy}
-            onChange={(event) => setSortBy(event.target.value)}
-            className="rounded-md border border-[var(--color-border)] bg-white px-3 py-2 text-sm text-[var(--color-text-main)] focus:border-[var(--color-primary)] focus:outline-none"
-          >
-            <option value="recommended">Recommended</option>
-            <option value="new">What's New</option>
-            <option value="popularity">Popularity</option>
-            <option value="price_low">Price: Low to High</option>
-            <option value="price_high">Price: High to Low</option>
-          </select>
-        </div>
-        {(skintoneFilter || occasionFilter) ? (
-          <div className="site-shell pb-3">
+          <div className="relative flex-shrink-0">
+            <select
+              value={rawOccasion || 'all'}
+              onChange={(event) => updateFilter('occasion', event.target.value)}
+              className={`appearance-none rounded-full border px-4 py-1.5 text-xs font-bold transition-colors focus:outline-none pr-8 ${occasionFilter ? 'bg-black text-white border-black' : 'bg-gray-50 text-gray-700 border-gray-200 hover:border-black'
+                }`}
+            >
+              <option value="all">Occasion</option>
+              <option value="date">Date Wear</option>
+              <option value="office">Office Wear</option>
+              <option value="puja">Puja/Festive</option>
+              <option value="party">Party</option>
+              <option value="casual">Casual</option>
+            </select>
+            <ChevronDown className={`absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-events-none ${occasionFilter ? 'text-white' : 'text-gray-500'}`} />
+          </div>
+
+          <div className="relative flex-shrink-0">
+            <select
+              value={sortBy}
+              onChange={(event) => setSortBy(event.target.value)}
+              className="appearance-none rounded-full border border-gray-200 bg-white px-4 py-1.5 text-xs font-bold text-gray-800 transition-colors focus:outline-none focus:border-black hover:border-black pr-8"
+            >
+              <option value="recommended">Best</option>
+              <option value="new">Newest</option>
+              <option value="popularity">Popular</option>
+              <option value="price_low">Price: Low</option>
+              <option value="price_high">Price: High</option>
+            </select>
+            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-events-none text-gray-500" />
+          </div>
+
+          {(skintoneFilter || occasionFilter) ? (
             <button
               onClick={clearToneAndOccasionFilters}
-              className="rounded-full border border-[var(--color-primary)] px-4 py-1.5 text-xs font-semibold text-[var(--color-primary)] hover:bg-[var(--color-primary)] hover:text-white"
+              className="flex-shrink-0 text-[11px] font-bold text-gray-500 hover:text-black hover:underline px-2"
             >
-              Reset Filters
+              Clear
             </button>
-          </div>
-        ) : null}
+          ) : null}
+        </div>
       </div>
 
       {/* Filter Bar */}
       <div className="hidden border-y border-[var(--color-border)] bg-[var(--color-bg-surface)] lg:block">
         <div className="site-shell py-3 flex justify-between items-center gap-4">
           {/* Left: Filters */}
-          <div className="flex items-center gap-2 md:gap-4 overflow-x-auto no-scrollbar whitespace-nowrap flex-1">
+          <div className="flex items-center gap-4 overflow-x-visible flex-1">
 
             {/* Skin Tone Filter */}
-            <div className="relative group">
+            <div className="relative group/filter">
               <button className={`flex items-center gap-1 text-sm font-bold px-4 py-2 rounded-full transition-colors whitespace-nowrap ${skintoneFilter ? 'bg-black text-white' : 'text-gray-700 hover:bg-gray-100'
                 }`}>
                 {skintoneFilter ? `Skin: ${displaySkintone}` : 'Skin Tone'} <ChevronDown className="w-4 h-4" />
               </button>
-              <div className="absolute top-full left-0 mt-1 w-40 bg-white border border-gray-100 shadow-lg py-2 hidden group-hover:block z-40 rounded-lg">
-                <button onClick={() => updateFilter('skintone', 'all')} className="block w-full text-left px-4 py-2 text-sm hover:bg-gray-50">All</button>
-                <button onClick={() => updateFilter('skintone', 'fair')} className="block w-full text-left px-4 py-2 text-sm hover:bg-gray-50">Fair</button>
-                <button onClick={() => updateFilter('skintone', 'neutral')} className="block w-full text-left px-4 py-2 text-sm hover:bg-gray-50">Neutral</button>
-                <button onClick={() => updateFilter('skintone', 'dark')} className="block w-full text-left px-4 py-2 text-sm hover:bg-gray-50">Dark</button>
+              <div className="absolute top-full left-0 pt-2 hidden group-hover/filter:block z-50">
+                <div className="w-48 bg-white border border-gray-100 shadow-xl py-2 rounded-xl overflow-hidden">
+                  <button onClick={() => updateFilter('skintone', 'all')} className="block w-full text-left px-5 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 hover:text-black">All Skin Tones</button>
+                  <button onClick={() => updateFilter('skintone', 'fair')} className="block w-full text-left px-5 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 hover:text-black">Fair</button>
+                  <button onClick={() => updateFilter('skintone', 'neutral')} className="block w-full text-left px-5 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 hover:text-black">Neutral</button>
+                  <button onClick={() => updateFilter('skintone', 'dark')} className="block w-full text-left px-5 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 hover:text-black">Dark</button>
+                </div>
               </div>
             </div>
 
             {/* Occasion Filter */}
-            <div className="relative group">
+            <div className="relative group/filter">
               <button className={`flex items-center gap-1 text-sm font-bold px-4 py-2 rounded-full transition-colors whitespace-nowrap ${occasionFilter ? 'bg-black text-white' : 'text-gray-700 hover:bg-gray-100'
                 }`}>
                 {occasionFilter ? `Occasion: ${displayOccasion}` : 'Occasion'} <ChevronDown className="w-4 h-4" />
               </button>
-              <div className="absolute top-full left-0 mt-1 w-48 bg-white border border-gray-100 shadow-lg py-2 hidden group-hover:block z-40 rounded-lg">
-                <button onClick={() => updateFilter('occasion', 'all')} className="block w-full text-left px-4 py-2 text-sm hover:bg-gray-50">All</button>
-                <button onClick={() => updateFilter('occasion', 'date')} className="block w-full text-left px-4 py-2 text-sm hover:bg-gray-50">Date Wear</button>
-                <button onClick={() => updateFilter('occasion', 'office')} className="block w-full text-left px-4 py-2 text-sm hover:bg-gray-50">Office Wear</button>
-                <button onClick={() => updateFilter('occasion', 'puja')} className="block w-full text-left px-4 py-2 text-sm hover:bg-gray-50">Puja/Festive</button>
-                <button onClick={() => updateFilter('occasion', 'party')} className="block w-full text-left px-4 py-2 text-sm hover:bg-gray-50">Party</button>
-                <button onClick={() => updateFilter('occasion', 'casual')} className="block w-full text-left px-4 py-2 text-sm hover:bg-gray-50">Casual</button>
+              <div className="absolute top-full left-0 pt-2 hidden group-hover/filter:block z-50">
+                <div className="w-48 bg-white border border-gray-100 shadow-xl py-2 rounded-xl overflow-hidden">
+                  <button onClick={() => updateFilter('occasion', 'all')} className="block w-full text-left px-5 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 hover:text-black">All Occasions</button>
+                  <button onClick={() => updateFilter('occasion', 'date')} className="block w-full text-left px-5 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 hover:text-black">Date Wear</button>
+                  <button onClick={() => updateFilter('occasion', 'office')} className="block w-full text-left px-5 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 hover:text-black">Office Wear</button>
+                  <button onClick={() => updateFilter('occasion', 'puja')} className="block w-full text-left px-5 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 hover:text-black">Puja/Festive</button>
+                  <button onClick={() => updateFilter('occasion', 'party')} className="block w-full text-left px-5 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 hover:text-black">Party</button>
+                  <button onClick={() => updateFilter('occasion', 'casual')} className="block w-full text-left px-5 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 hover:text-black">Casual</button>
+                </div>
               </div>
             </div>
 
@@ -509,7 +525,7 @@ const AllProductsPage = ({ initialCategory = 'all' }) => {
             {(skintoneFilter || occasionFilter) && (
               <button
                 onClick={clearToneAndOccasionFilters}
-                className="text-xs font-bold text-[var(--color-primary)] hover:underline"
+                className="text-xs font-bold text-gray-500 hover:text-black hover:underline px-2"
               >
                 Reset
               </button>
@@ -517,25 +533,28 @@ const AllProductsPage = ({ initialCategory = 'all' }) => {
 
           </div>
 
-          {/* Right: Sort - Fixed width/shrink */}
-          <div className="flex-shrink-0 flex items-center gap-2 border border-gray-200 px-3 py-2 rounded-sm cursor-pointer hover:border-gray-400 relative group">
-            <span className="text-sm text-gray-500 hidden sm:inline">Sort by:</span>
-            <span className="text-sm font-bold text-gray-800 capitalize">{sortBy.replace('_', ' ')}</span>
-            <ChevronDown className="w-4 h-4 text-gray-500" />
+          {/* Right: Sort */}
+          <div className="flex-shrink-0 relative group/sort">
+            <button className="flex items-center gap-2 border border-gray-200 px-4 py-2 rounded-full hover:border-black transition-colors bg-white z-10 relative">
+              <span className="text-sm font-bold text-gray-800 capitalize">Sort: {sortBy.replace('_', ' ')}</span>
+              <ChevronDown className="w-4 h-4 text-gray-500" />
+            </button>
 
-            <div className="absolute top-full right-0 mt-1 w-48 bg-white border border-gray-100 shadow-lg py-2 hidden group-hover:block z-40">
-              <button onClick={() => setSortBy('recommended')} className={`block w-full text-left px-4 py-2 text-sm hover:bg-gray-50 ${sortBy === 'recommended' ? 'font-bold bg-gray-50' : ''}`}>Recommended</button>
-              <button onClick={() => setSortBy('new')} className={`block w-full text-left px-4 py-2 text-sm hover:bg-gray-50 ${sortBy === 'new' ? 'font-bold bg-gray-50' : ''}`}>What's New</button>
-              <button onClick={() => setSortBy('popularity')} className={`block w-full text-left px-4 py-2 text-sm hover:bg-gray-50 ${sortBy === 'popularity' ? 'font-bold bg-gray-50' : ''}`}>Popularity</button>
-              <button onClick={() => setSortBy('price_low')} className={`block w-full text-left px-4 py-2 text-sm hover:bg-gray-50 ${sortBy === 'price_low' ? 'font-bold bg-gray-50' : ''}`}>Price: Low to High</button>
-              <button onClick={() => setSortBy('price_high')} className={`block w-full text-left px-4 py-2 text-sm hover:bg-gray-50 ${sortBy === 'price_high' ? 'font-bold bg-gray-50' : ''}`}>Price: High to Low</button>
+            <div className="absolute top-full right-0 pt-2 hidden group-hover/sort:block z-50">
+              <div className="w-56 bg-white border border-gray-100 shadow-xl py-2 rounded-xl overflow-hidden">
+                <button onClick={() => setSortBy('recommended')} className={`block w-full text-left px-5 py-2.5 text-sm font-medium hover:bg-gray-50 ${sortBy === 'recommended' ? 'text-black font-bold bg-gray-50' : 'text-gray-700'}`}>Recommended</button>
+                <button onClick={() => setSortBy('new')} className={`block w-full text-left px-5 py-2.5 text-sm font-medium hover:bg-gray-50 ${sortBy === 'new' ? 'text-black font-bold bg-gray-50' : 'text-gray-700'}`}>What's New</button>
+                <button onClick={() => setSortBy('popularity')} className={`block w-full text-left px-5 py-2.5 text-sm font-medium hover:bg-gray-50 ${sortBy === 'popularity' ? 'text-black font-bold bg-gray-50' : 'text-gray-700'}`}>Popularity</button>
+                <button onClick={() => setSortBy('price_low')} className={`block w-full text-left px-5 py-2.5 text-sm font-medium hover:bg-gray-50 ${sortBy === 'price_low' ? 'text-black font-bold bg-gray-50' : 'text-gray-700'}`}>Price: Low to High</button>
+                <button onClick={() => setSortBy('price_high')} className={`block w-full text-left px-5 py-2.5 text-sm font-medium hover:bg-gray-50 ${sortBy === 'price_high' ? 'text-black font-bold bg-gray-50' : 'text-gray-700'}`}>Price: High to Low</button>
+              </div>
             </div>
           </div>
         </div>
       </div>
 
       {/* Product Grid */}
-      <div className="site-shell py-6 md:py-8">
+      <div className="site-shell py-6 lg:py-8 mb-20 md:mb-0">
         {loading ? (
           <div className="flex justify-center py-20 text-gray-500">Loading products...</div>
         ) : shouldGroupBySkintone ? (
