@@ -1,6 +1,6 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Heart } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Heart } from 'lucide-react';
 import { useWishlist } from '../contexts/wishlist-context';
 import { useNotifications } from './NotificationProvider';
 
@@ -14,7 +14,7 @@ const formatAmount = (amount, currency = 'INR') => {
   }).format(value);
 };
 
-const ProductCard = ({ item }) => {
+const ProductCard = ({ item, enableImageScroller = false }) => {
   const {
     handle,
     title,
@@ -23,6 +23,8 @@ const ProductCard = ({ item }) => {
     compareAtPrice,
     vendor,
     img,
+    images,
+    hoverImg,
     badge,
   } = item || {};
 
@@ -42,7 +44,37 @@ const ProductCard = ({ item }) => {
     });
   };
 
-  const imageUrl = img || featuredImage?.url;
+  const [activeImageIndex, setActiveImageIndex] = useState(0);
+
+  const imageList = useMemo(() => {
+    const list = [];
+    const seen = new Set();
+
+    const pushImage = (value) => {
+      const url = typeof value === 'string' ? value : value?.url;
+      if (!url || seen.has(url)) return;
+      seen.add(url);
+      list.push(url);
+    };
+
+    pushImage(img);
+    pushImage(featuredImage?.url);
+    if (Array.isArray(images)) {
+      images.forEach((entry) => pushImage(entry));
+    }
+    pushImage(hoverImg);
+    return list;
+  }, [featuredImage?.url, hoverImg, images, img]);
+
+  useEffect(() => {
+    setActiveImageIndex(0);
+  }, [handle, imageList.length]);
+
+  const hasScroller = enableImageScroller && imageList.length > 1;
+  const imageUrl =
+    hasScroller && imageList[activeImageIndex]
+      ? imageList[activeImageIndex]
+      : imageList[0] || img || featuredImage?.url;
   const imageAlt = featuredImage?.altText || title || 'Product image';
   const currencyCode =
     price?.currencyCode ||
@@ -70,6 +102,28 @@ const ProductCard = ({ item }) => {
     discount = Math.round(((compareAtPrice.amount - price.amount) / compareAtPrice.amount) * 100);
   }
 
+  const showPrevImage = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setActiveImageIndex((current) =>
+      current === 0 ? imageList.length - 1 : current - 1,
+    );
+  };
+
+  const showNextImage = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setActiveImageIndex((current) =>
+      current === imageList.length - 1 ? 0 : current + 1,
+    );
+  };
+
+  const goToImage = (event, index) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setActiveImageIndex(index);
+  };
+
   return (
     <div className="group relative cursor-pointer bg-white transition-shadow duration-300 hover:shadow-lg">
       {handle ? (
@@ -88,6 +142,40 @@ const ProductCard = ({ item }) => {
               </div>
             )}
           </div>
+
+          {hasScroller ? (
+            <>
+              <button
+                type="button"
+                onClick={showPrevImage}
+                className="absolute left-2 top-1/2 z-20 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full bg-white/85 text-gray-700 shadow-sm transition hover:bg-white md:opacity-0 md:group-hover:opacity-100"
+                aria-label="Previous image"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={showNextImage}
+                className="absolute right-2 top-1/2 z-20 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full bg-white/85 text-gray-700 shadow-sm transition hover:bg-white md:opacity-0 md:group-hover:opacity-100"
+                aria-label="Next image"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
+
+              <div className="absolute bottom-3 left-1/2 z-20 flex -translate-x-1/2 items-center gap-1.5 rounded-full bg-white/70 px-2 py-1 backdrop-blur-sm">
+                {imageList.map((image, index) => (
+                  <button
+                    key={`${handle || title || 'product'}-dot-${image}`}
+                    type="button"
+                    onClick={(event) => goToImage(event, index)}
+                    className={`h-1.5 w-1.5 rounded-full transition ${activeImageIndex === index ? 'bg-black' : 'bg-gray-400/80'
+                      }`}
+                    aria-label={`Show image ${index + 1}`}
+                  />
+                ))}
+              </div>
+            </>
+          ) : null}
 
           <button
             className="absolute bottom-4 right-4 flex h-8 w-8 items-center justify-center rounded-full bg-white shadow-md opacity-0 transition-opacity duration-200 hover:bg-pink-50 group-hover:opacity-100"

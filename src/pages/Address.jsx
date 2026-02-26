@@ -78,6 +78,8 @@ export default function Address() {
   const lineItems = useMemo(() => draft?.items ?? [], [draft]);
   const subtotal = Number(draft?.totals?.subtotal ?? 0);
   const currency = draft?.totals?.currency || 'INR';
+  const paymentFee = Number(draft?.totals?.paymentFee ?? 0);
+  const discountAmount = Number(draft?.appliedDiscount?.amount ?? draft?.totals?.discountAmount ?? 0);
   const totalQuantity = useMemo(
     () => lineItems.reduce((sum, item) => sum + Number(item?.quantity || 0), 0),
     [lineItems],
@@ -89,7 +91,7 @@ export default function Address() {
     return subtotal >= freeShippingThreshold ? 0 : 100; // 100 INR shipping fee
   }, [subtotal]);
   
-  const finalTotal = subtotal + shippingFee;
+  const finalTotal = Math.max(subtotal + shippingFee + paymentFee - discountAmount, 0);
 
   const applySavedAddress = (addressId) => {
     const next = savedAddresses.find((item) => item.id === addressId);
@@ -176,7 +178,14 @@ export default function Address() {
     // Calculate shipping fee
     const freeShippingThreshold = 5000;
     const calculatedShippingFee = subtotal >= freeShippingThreshold ? 0 : 100;
-    const calculatedTotal = subtotal + calculatedShippingFee;
+    const currentPaymentFee = Number(draft?.totals?.paymentFee ?? 0);
+    const currentDiscountAmount = Number(
+      draft?.appliedDiscount?.amount ?? draft?.totals?.discountAmount ?? 0,
+    );
+    const calculatedTotal = Math.max(
+      subtotal + calculatedShippingFee + currentPaymentFee - currentDiscountAmount,
+      0,
+    );
 
     const nextDraft = {
       ...draft,
@@ -184,6 +193,10 @@ export default function Address() {
       totals: {
         ...draft.totals,
         shippingFee: calculatedShippingFee,
+        paymentFee: currentPaymentFee,
+        discountAmount: currentDiscountAmount,
+        discountCode:
+          draft?.appliedDiscount?.code || draft?.totals?.discountCode || null,
         total: calculatedTotal,
       },
       updatedAt: new Date().toISOString(),
@@ -352,6 +365,14 @@ export default function Address() {
             <p className="text-xs text-emerald-600 text-right">
               Add {formatMoney(5000 - subtotal, currency)} more for free shipping
             </p>
+          )}
+          {discountAmount > 0 && (
+            <div className="flex items-center justify-between">
+              <span className="text-gray-600">Discount</span>
+              <span className="font-semibold text-emerald-600">
+                -{formatMoney(discountAmount, currency)}
+              </span>
+            </div>
           )}
           <div className="flex items-center justify-between border-t border-gray-200 pt-2 mt-2">
             <span className="font-bold text-gray-900">Total</span>

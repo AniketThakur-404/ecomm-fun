@@ -159,6 +159,7 @@ export default function HomePage() {
         ctaHref="/products?category=t-shirts"
         ctaLabel="Shop Now"
         loading={latestLoading}
+        enableImageScroller
       />
 
       <VideoBanner />
@@ -169,6 +170,7 @@ export default function HomePage() {
         ctaHref="/products"
         ctaLabel="View All"
         loading={moreLoading}
+        enableImageScroller
       />
     </div>
   );

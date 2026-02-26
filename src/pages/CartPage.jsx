@@ -7,11 +7,40 @@ import {
   findVariantForSize,
   formatMoney,
   getProductImageUrl,
+  isSizeOptionName,
 } from '../lib/api';
 import { setCheckoutDraft } from '../lib/checkout';
 import { useCatalog } from '../contexts/catalog-context';
 import { useWishlist } from '../contexts/wishlist-context';
 import { useNotifications } from '../components/NotificationProvider';
+
+const DEFAULT_SIZE_TOKENS = new Set(['default', 'default title', 'title']);
+const normalizeSizeToken = (value) => String(value ?? '').trim().toLowerCase();
+
+const resolveItemSize = (item) => {
+  const explicitSize = String(item?.size ?? '').trim();
+  if (explicitSize && !DEFAULT_SIZE_TOKENS.has(normalizeSizeToken(explicitSize))) {
+    return explicitSize;
+  }
+
+  const selectedOptions = Array.isArray(item?.variant?.selectedOptions)
+    ? item.variant.selectedOptions
+    : [];
+  const optionMatch = selectedOptions.find(
+    (option) => isSizeOptionName(option?.name) && String(option?.value ?? '').trim(),
+  );
+  const optionValue = String(optionMatch?.value ?? '').trim();
+  if (optionValue && !DEFAULT_SIZE_TOKENS.has(normalizeSizeToken(optionValue))) {
+    return optionValue;
+  }
+
+  const titleValue = String(item?.variant?.title ?? '').trim();
+  if (titleValue && !DEFAULT_SIZE_TOKENS.has(normalizeSizeToken(titleValue))) {
+    return titleValue;
+  }
+
+  return null;
+};
 
 const CartPage = () => {
   const navigate = useNavigate();
@@ -222,18 +251,21 @@ const CartPage = () => {
         return;
       }
 
-      const checkoutItems = selectedReadyItems.map((item) => ({
-        id: item.variant?.id ?? item.product?.id ?? item.id,
-        slug: item.handle,
-        sku: item.variant?.sku ?? null,
-        name: item.product?.title || item.handle,
-        vendor: item.product?.vendor || '',
-        size: item.size ?? null,
-        quantity: item.quantity ?? 1,
-        price: Number(item.unitPrice?.amount ?? 0),
-        currency: item.unitPrice?.currency || 'INR',
-        image: getProductImageUrl(item.product),
-      }));
+      const checkoutItems = selectedReadyItems.map((item) => {
+        const resolvedSize = resolveItemSize(item);
+        return {
+          id: item.variant?.id ?? item.product?.id ?? item.id,
+          slug: item.handle,
+          sku: item.variant?.sku ?? null,
+          name: item.product?.title || item.handle,
+          vendor: item.product?.vendor || '',
+          size: resolvedSize,
+          quantity: item.quantity ?? 1,
+          price: Number(item.unitPrice?.amount ?? 0),
+          currency: item.unitPrice?.currency || 'INR',
+          image: getProductImageUrl(item.product),
+        };
+      });
       const subtotal = checkoutItems.reduce(
         (sum, entry) => sum + Number(entry.price || 0) * Number(entry.quantity || 0),
         0,
@@ -250,10 +282,14 @@ const CartPage = () => {
         totals: {
           subtotal,
           shippingFee: 0,
+          paymentFee: 0,
+          discountAmount: 0,
+          discountCode: null,
           total: subtotal,
           currency,
           itemCount,
         },
+        appliedDiscount: null,
       });
 
       navigate('/checkout/address');
@@ -351,6 +387,7 @@ const CartPage = () => {
       <div className="divide-y divide-gray-100">
         {readyItems.map((item) => {
           const imageUrl = getProductImageUrl(item.product);
+          const sizeLabel = resolveItemSize(item) || 'Default';
           const unitPriceLabel = formatMoney(item.unitPrice.amount, item.unitPrice.currency);
           const compareAt = item.variant?.compareAtPrice?.amount;
           const compareAtLabel =
@@ -425,7 +462,7 @@ const CartPage = () => {
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-semibold uppercase text-gray-600">Size:</span>
                       <div className="flex items-center gap-1 rounded border border-gray-300 px-2 py-1 text-gray-800">
-                        <span>{item.size || 'Default'}</span>
+                        <span>{sizeLabel}</span>
                         <ChevronDown className="h-4 w-4 text-gray-500" />
                       </div>
                     </div>

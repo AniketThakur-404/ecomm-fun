@@ -39,6 +39,7 @@ export default function ProductGrid({
   ctaHref = "/products",
   ctaLabel = "Discover More",
   loading = false,
+  enableImageScroller = false,
 }) {
   const hasProducts = Array.isArray(products) && products.length > 0;
   const showSkeleton = loading && !hasProducts;
@@ -50,7 +51,7 @@ export default function ProductGrid({
       <SectionHeader title={title} ctaHref={ctaHref} ctaLabel={ctaLabel} />
 
       {/* Four-up on large screens with consistent spacing */}
-      <div className="grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-4 md:gap-4">
+      <div className="grid grid-cols-2 gap-x-3 gap-y-6 sm:gap-x-4 sm:gap-y-8 md:grid-cols-3 lg:grid-cols-4 lg:gap-x-6 lg:gap-y-10">
         {showSkeleton
           ? skeletonItems.map((item) => <ProductCardSkeleton key={`skeleton-${item}`} />)
           : products.map((item, idx) => (
@@ -62,7 +63,7 @@ export default function ProductGrid({
                 viewport={{ once: true, amount: 0.3 }}
                 className="h-full"
               >
-                <ProductCard item={item} />
+                <ProductCard item={item} enableImageScroller={enableImageScroller} />
               </Motion.div>
             ))}
       </div>
@@ -82,4 +83,3 @@ export default function ProductGrid({
     </section>
   );
 }
-

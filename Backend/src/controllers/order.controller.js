@@ -4,6 +4,19 @@ const { z } = require("zod");
 const { getPrisma } = require("../db/prismaClient");
 const { OrderStatus, OrderRequestType } = require("@prisma/client");
 const { sendSuccess, sendError } = require("../utils/response");
+const {
+  roundMoney,
+  toMoney,
+  normalizeDiscountCode,
+  isDiscountLive,
+  calculateDiscountAmount,
+} = require("../utils/discounts");
+
+const FREE_SHIPPING_THRESHOLD = 5000;
+const STANDARD_SHIPPING_FEE = 100;
+const PAYMENT_FEES = {
+  COD: 10,
+};
 
 const shippingSchema = z.object({
   fullName: z.string().min(1),
@@ -21,11 +34,23 @@ const shippingSchema = z.object({
   estimatedDelivery: z.string().optional(),
 }).passthrough();
 
+const discountInputSchema = z
+  .object({
+    id: z.string().min(1).optional(),
+    code: z.string().min(2).max(64).optional(),
+  })
+  .refine((value) => value.id || value.code, {
+    message: "Discount id or code is required.",
+  });
+
 const createOrderSchema = z.object({
   paymentMethod: z.string().max(64).optional(),
   totals: z.object({
     subtotal: z.number().nonnegative(),
     shippingFee: z.number().nonnegative(),
+    paymentFee: z.number().nonnegative().optional(),
+    discountAmount: z.number().nonnegative().optional(),
+    discountCode: z.string().max(64).nullable().optional(),
     total: z.number().nonnegative(),
     currency: z.string().optional(),
   }),
@@ -42,6 +67,7 @@ const createOrderSchema = z.object({
       })
     )
     .min(1),
+  discount: discountInputSchema.optional().nullable(),
 });
 
 const updateOrderSchema = z.object({
@@ -68,10 +94,13 @@ const returnExchangeSchema = orderActionSchema.extend({
 });
 
 const createRazorpayOrderSchema = z.object({
-  amount: z.number().int().positive(),
+  amount: z.number().int().positive().optional(),
   currency: z.string().length(3).optional(),
   receipt: z.string().max(64).optional(),
   notes: z.record(z.string()).optional(),
+  order: createOrderSchema.optional(),
+}).refine((payload) => payload.amount || payload.order, {
+  message: "amount or order is required",
 });
 
 const confirmRazorpayCheckoutSchema = z.object({
@@ -157,6 +186,122 @@ const findMyOrder = async (prisma, userId, orderId) =>
 
 const createOrderNumber = () => `ORD-${Date.now().toString(36).toUpperCase()}`;
 
+const normalizePaymentMethod = (value = "") =>
+  String(value || "")
+    .trim()
+    .toUpperCase();
+
+const calculateSubtotalFromItems = (items = []) =>
+  roundMoney(
+    (Array.isArray(items) ? items : []).reduce((sum, item) => {
+      const price = toMoney(item?.price, 0);
+      const quantity = Math.max(1, Number(item?.quantity || 0));
+      return sum + price * quantity;
+    }, 0),
+  );
+
+const calculateShippingFee = (subtotal) =>
+  subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : STANDARD_SHIPPING_FEE;
+
+const calculatePaymentFee = (paymentMethod) =>
+  toMoney(PAYMENT_FEES[normalizePaymentMethod(paymentMethod)] || 0, 0);
+
+const buildDiscountSnapshot = (discount, amount) => ({
+  id: discount.id,
+  code: discount.code,
+  name: discount.name || null,
+  type: discount.type,
+  value: toMoney(discount.value, 0),
+  minSubtotal:
+    discount.minSubtotal === null || discount.minSubtotal === undefined
+      ? null
+      : toMoney(discount.minSubtotal, 0),
+  maxDiscount:
+    discount.maxDiscount === null || discount.maxDiscount === undefined
+      ? null
+      : toMoney(discount.maxDiscount, 0),
+  amount: toMoney(amount, 0),
+});
+
+const resolveAppliedDiscount = async (prisma, discountInput, subtotal) => {
+  if (!discountInput || typeof discountInput !== "object") {
+    return { discountAmount: 0, discount: null };
+  }
+
+  const requestedId = String(discountInput.id || "").trim();
+  const requestedCode = normalizeDiscountCode(discountInput.code);
+  if (!requestedId && !requestedCode) {
+    return { discountAmount: 0, discount: null };
+  }
+
+  let discount = null;
+  if (requestedId) {
+    discount = await prisma.discount.findUnique({ where: { id: requestedId } });
+  }
+  if (!discount && requestedCode) {
+    discount = await prisma.discount.findUnique({ where: { code: requestedCode } });
+  }
+
+  if (!discount) {
+    const error = new Error("Discount code is invalid.");
+    error.status = 400;
+    throw error;
+  }
+  if (requestedCode && requestedCode !== discount.code) {
+    const error = new Error("Discount code does not match this discount.");
+    error.status = 400;
+    throw error;
+  }
+  if (!isDiscountLive(discount)) {
+    const error = new Error("Discount code is inactive or expired.");
+    error.status = 400;
+    throw error;
+  }
+
+  const discountAmount = calculateDiscountAmount(discount, subtotal);
+  if (discountAmount <= 0) {
+    const minSubtotal = toMoney(discount.minSubtotal, 0);
+    const error = new Error(
+      minSubtotal > 0
+        ? `Order subtotal must be at least ${minSubtotal} to use this code.`
+        : "Discount is not applicable for this order.",
+    );
+    error.status = 400;
+    throw error;
+  }
+
+  return {
+    discountAmount,
+    discount: buildDiscountSnapshot(discount, discountAmount),
+  };
+};
+
+const calculateCanonicalTotals = async (prisma, payload) => {
+  const subtotal = calculateSubtotalFromItems(payload.items);
+  const shippingFee = calculateShippingFee(subtotal);
+  const paymentFee = calculatePaymentFee(payload.paymentMethod);
+  const { discountAmount, discount } = await resolveAppliedDiscount(
+    prisma,
+    payload.discount,
+    subtotal,
+  );
+  const total = roundMoney(Math.max(subtotal + shippingFee + paymentFee - discountAmount, 0));
+
+  return {
+    subtotal,
+    shippingFee,
+    paymentFee,
+    discountAmount,
+    discountCode: discount?.code || null,
+    total,
+    currency:
+      String(payload?.totals?.currency || payload?.items?.[0]?.currency || "INR")
+        .trim()
+        .toUpperCase() || "INR",
+    discount,
+  };
+};
+
 const getRazorpayCreds = () => {
   const keyId = String(process.env.RAZORPAY_KEY_ID || "").trim();
   const keySecret = String(process.env.RAZORPAY_KEY_SECRET || "").trim();
@@ -184,13 +329,14 @@ exports.createOrder = async (req, res, next) => {
   try {
     const payload = createOrderSchema.parse(req.body);
     const prisma = await getPrisma();
+    const canonicalTotals = await calculateCanonicalTotals(prisma, payload);
 
     const order = await prisma.order.create({
       data: {
         number: createOrderNumber(),
         status: OrderStatus.PENDING,
         paymentMethod: payload.paymentMethod,
-        totals: payload.totals,
+        totals: canonicalTotals,
         shipping: payload.shipping,
         items: payload.items,
         userId: req.user?.id,
@@ -214,6 +360,9 @@ exports.createOrder = async (req, res, next) => {
         "Order cancellation is unavailable until the database migration is applied.",
       );
     }
+    if (error?.status) {
+      return sendError(res, error.status, error.message || "Invalid payload");
+    }
     return next(error);
   }
 };
@@ -226,6 +375,32 @@ exports.createRazorpayOrder = async (req, res, next) => {
     }
 
     const payload = createRazorpayOrderSchema.parse(req.body || {});
+    let amount = payload.amount;
+    let currency = (payload.currency || "INR").toUpperCase();
+    let canonicalTotals = null;
+
+    if (payload.order) {
+      const prisma = await getPrisma();
+      canonicalTotals = await calculateCanonicalTotals(prisma, payload.order);
+      amount = Math.round(toMoney(canonicalTotals.total, 0) * 100);
+      currency = canonicalTotals.currency || currency;
+    }
+
+    if (!amount || amount <= 0) {
+      return sendError(res, 400, "Order amount must be greater than zero.");
+    }
+
+    const notes = { ...(payload.notes || {}) };
+    if (canonicalTotals?.discountCode) {
+      notes.discountCode = canonicalTotals.discountCode;
+    }
+    if (canonicalTotals?.discountAmount > 0) {
+      notes.discountAmount = String(canonicalTotals.discountAmount);
+    }
+    if (canonicalTotals?.total > 0) {
+      notes.computedTotal = String(canonicalTotals.total);
+    }
+
     const response = await fetch("https://api.razorpay.com/v1/orders", {
       method: "POST",
       headers: {
@@ -233,10 +408,10 @@ exports.createRazorpayOrder = async (req, res, next) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        amount: payload.amount,
-        currency: (payload.currency || "INR").toUpperCase(),
+        amount,
+        currency,
         receipt: payload.receipt || `rcpt_${Date.now()}`,
-        notes: payload.notes || {},
+        notes,
       }),
     });
 
@@ -256,10 +431,14 @@ exports.createRazorpayOrder = async (req, res, next) => {
     return sendSuccess(res, {
       keyId: creds.keyId,
       order: razorpayPayload,
+      pricing: canonicalTotals,
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return sendError(res, 400, error.errors[0]?.message || "Invalid payload");
+    }
+    if (error?.status) {
+      return sendError(res, error.status, error.message || "Invalid payload");
     }
     return next(error);
   }
@@ -287,12 +466,13 @@ exports.confirmRazorpayCheckout = async (req, res, next) => {
     }
 
     const prisma = await getPrisma();
+    const canonicalTotals = await calculateCanonicalTotals(prisma, order);
     const created = await prisma.order.create({
       data: {
         number: createOrderNumber(),
         status: OrderStatus.PAID,
         paymentMethod: order.paymentMethod || "RAZORPAY",
-        totals: order.totals,
+        totals: canonicalTotals,
         shipping: {
           ...(order.shipping || {}),
           paymentId: payment.razorpayPaymentId,
@@ -308,6 +488,9 @@ exports.confirmRazorpayCheckout = async (req, res, next) => {
   } catch (error) {
     if (error instanceof z.ZodError) {
       return sendError(res, 400, error.errors[0]?.message || "Invalid payload");
+    }
+    if (error?.status) {
+      return sendError(res, error.status, error.message || "Invalid payload");
     }
     return next(error);
   }

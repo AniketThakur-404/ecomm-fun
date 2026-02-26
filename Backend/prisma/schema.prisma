@@ -350,6 +350,26 @@ model OrderRequest {
   @@index([status])
 }
 
+model Discount {
+  id          String       @id @default(cuid())
+  code        String       @unique
+  name        String?
+  description String?
+  type        DiscountType
+  value       Decimal      @db.Decimal(10, 2)
+  minSubtotal Decimal?     @db.Decimal(10, 2)
+  maxDiscount Decimal?     @db.Decimal(10, 2)
+  startsAt    DateTime?
+  endsAt      DateTime?
+  isActive    Boolean      @default(true)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@index([code])
+  @@index([isActive])
+  @@index([startsAt, endsAt])
+}
+
 enum CollectionType {
   MANUAL
   AUTOMATED
@@ -431,4 +451,9 @@ enum OrderRequestStatus {
   APPROVED
   REJECTED
   COMPLETED
+}
+
+enum DiscountType {
+  FLAT
+  PERCENTAGE
 }

@@ -34,6 +34,7 @@ import AdminOrders from './pages/admin/AdminOrders';
 import AdminUsers from './pages/admin/AdminUsers';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import AdminReviews from './pages/admin/AdminReviews';
+import AdminDiscounts from './pages/admin/AdminDiscounts';
 
 export default function App() {
   return (
@@ -65,6 +66,7 @@ export default function App() {
             <Route path="collections/new" element={<AdminCollectionForm />} />
             <Route path="collections/:id" element={<AdminCollectionForm />} />
             <Route path="orders" element={<AdminOrders />} />
+            <Route path="discounts" element={<AdminDiscounts />} />
             <Route path="reviews" element={<AdminReviews />} />
             <Route path="users" element={<AdminUsers />} />
           </Route>

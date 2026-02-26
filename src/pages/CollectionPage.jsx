@@ -233,7 +233,7 @@ const CollectionPage = () => {
                 {loading ? (
                     <div className="flex justify-center py-20 text-gray-500">Loading collection...</div>
                 ) : (
-                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-x-6 gap-y-10">
+                    <div className="grid grid-cols-2 gap-x-3 gap-y-6 sm:gap-x-4 sm:gap-y-8 md:grid-cols-3 lg:grid-cols-5 lg:gap-x-6 lg:gap-y-10">
                         {sortedProducts.length > 0 ? (
                             sortedProducts.map((product, index) => (
                                 <ProductCard key={product.handle || product.id || index} item={product} />

@@ -474,18 +474,33 @@ const productCompactSelect = {
       position: true,
     },
     orderBy: { position: 'asc' },
-    take: 2,
+  },
+  options: {
+    select: {
+      name: true,
+      values: true,
+      position: true,
+    },
+    orderBy: { position: 'asc' },
   },
   variants: {
-    where: { price: { not: null } },
     select: {
       id: true,
+      title: true,
+      sku: true,
       price: true,
       compareAtPrice: true,
       trackInventory: true,
+      inventoryPolicy: true,
+      optionValues: true,
+      position: true,
+      inventoryLevels: {
+        select: {
+          available: true,
+        },
+      },
     },
-    orderBy: { price: 'asc' },
-    take: 1,
+    orderBy: { position: 'asc' },
   },
   _count: {
     select: {

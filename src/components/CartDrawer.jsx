@@ -11,7 +11,36 @@ import {
   findVariantForSize,
   formatMoney,
   getProductImageUrl,
+  isSizeOptionName,
 } from '../lib/api';
+
+const DEFAULT_SIZE_TOKENS = new Set(['default', 'default title', 'title']);
+const normalizeSizeToken = (value) => String(value ?? '').trim().toLowerCase();
+
+const resolveItemSize = (item) => {
+  const explicitSize = String(item?.size ?? '').trim();
+  if (explicitSize && !DEFAULT_SIZE_TOKENS.has(normalizeSizeToken(explicitSize))) {
+    return explicitSize;
+  }
+
+  const selectedOptions = Array.isArray(item?.variant?.selectedOptions)
+    ? item.variant.selectedOptions
+    : [];
+  const optionMatch = selectedOptions.find(
+    (option) => isSizeOptionName(option?.name) && String(option?.value ?? '').trim(),
+  );
+  const optionValue = String(optionMatch?.value ?? '').trim();
+  if (optionValue && !DEFAULT_SIZE_TOKENS.has(normalizeSizeToken(optionValue))) {
+    return optionValue;
+  }
+
+  const titleValue = String(item?.variant?.title ?? '').trim();
+  if (titleValue && !DEFAULT_SIZE_TOKENS.has(normalizeSizeToken(titleValue))) {
+    return titleValue;
+  }
+
+  return null;
+};
 
 const CartDrawer = ({ open, onClose }) => {
   const navigate = useNavigate();
@@ -304,6 +333,7 @@ const CartDrawer = ({ open, onClose }) => {
                 <div className="divide-y divide-gray-100">
                   {readyItems.map((item) => {
                     const imageUrl = getProductImageUrl(item.product);
+                    const sizeLabel = resolveItemSize(item) || 'Default';
                     const unitPriceLabel = formatMoney(item.unitPrice.amount, item.unitPrice.currency);
                     const compareAt = item.variant?.compareAtPrice?.amount;
                     const compareAtLabel =
@@ -377,7 +407,7 @@ const CartDrawer = ({ open, onClose }) => {
                                   Size:
                                 </span>
                                 <div className="flex items-center gap-1 rounded border border-gray-300 px-2 py-1 text-gray-800">
-                                  <span>{item.size || 'Default'}</span>
+                                  <span>{sizeLabel}</span>
                                   <ChevronDown className="h-4 w-4 text-gray-500" />
                                 </div>
                               </div>

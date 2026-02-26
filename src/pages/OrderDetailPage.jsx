@@ -151,6 +151,9 @@ const OrderDetailPage = () => {
   const currency = order.totals?.currency || 'INR';
   const subtotal = Number(order.totals?.subtotal ?? 0);
   const shippingFee = Number(order.totals?.shippingFee ?? 0);
+  const paymentFee = Number(order.totals?.paymentFee ?? 0);
+  const discountAmount = Number(order.totals?.discountAmount ?? 0);
+  const discountCode = String(order.totals?.discountCode || '').trim();
   const total = Number(order.totals?.total ?? 0);
   const shipping = order.shipping || {};
 
@@ -392,6 +395,18 @@ const OrderDetailPage = () => {
                   <span>Shipping</span>
                   <span>{shippingFee > 0 ? formatMoney(shippingFee, currency) : 'Free'}</span>
                 </div>
+                {paymentFee > 0 ? (
+                  <div className="flex justify-between text-gray-700">
+                    <span>Payment Fee</span>
+                    <span>{formatMoney(paymentFee, currency)}</span>
+                  </div>
+                ) : null}
+                {discountAmount > 0 ? (
+                  <div className="flex justify-between text-emerald-700">
+                    <span>Discount{discountCode ? ` (${discountCode})` : ''}</span>
+                    <span>-{formatMoney(discountAmount, currency)}</span>
+                  </div>
+                ) : null}
                 {order.paymentMethod ? (
                   <div className="flex justify-between text-gray-700">
                     <span>Payment Method</span>

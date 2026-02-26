@@ -600,9 +600,15 @@ const ProductDetails = () => {
 
   const handleAddToCart = () => {
     if (!product?.handle) return;
+    const primarySize = hasSizes
+      ? (selectedSize ||
+        sizeOptions.find((size) => sizeAvailability[size]?.inStock) ||
+        sizeOptions[0] ||
+        null)
+      : null;
 
     if (hasSizes) {
-      const availability = sizeAvailability[selectedSize];
+      const availability = primarySize ? sizeAvailability[primarySize] : null;
       if (availability && !availability.inStock) {
         notify({
           title: 'Out of stock',
@@ -631,7 +637,7 @@ const ProductDetails = () => {
     }
 
     // Otherwise, just add main product and go to cart
-    addItem(product.handle, { size: selectedSize, quantity: 1 });
+    addItem(product.handle, { size: primarySize, quantity: 1 });
     navigate('/cart');
   };
 
@@ -647,13 +653,20 @@ const ProductDetails = () => {
   };
 
   const handleConfirmSizes = (itemsWithSizes) => {
+    const primarySize = hasSizes
+      ? (selectedSize ||
+        sizeOptions.find((size) => sizeAvailability[size]?.inStock) ||
+        sizeOptions[0] ||
+        null)
+      : null;
+
     if (hasComboItems) {
       itemsWithSizes.forEach(({ handle, size, quantity }) => {
         addItem(handle, { size, quantity: quantity ?? 1 });
       });
     } else {
       // 1. Add Main Product
-      addItem(product.handle, { size: selectedSize, quantity: 1 });
+      addItem(product.handle, { size: primarySize, quantity: 1 });
 
       // 2. Add FBT Items
       itemsWithSizes.forEach(({ handle, size }) => {
@@ -1181,18 +1194,26 @@ const ProductDetails = () => {
                     const availability = sizeAvailability[size];
                     const isOut = availability ? !availability.inStock : false;
                     const isSelected = selectedSize === size;
+                    const sizeButtonClasses = isOut
+                      ? 'border-gray-300 bg-gray-100 text-gray-600 line-through cursor-not-allowed hover:border-gray-300'
+                      : isSelected
+                        ? 'border-black bg-black text-white'
+                        : 'border-gray-300 text-gray-900 hover:border-black';
                     return (
                       <button
                         key={size}
                         onClick={() => setSelectedSize(size)}
                         disabled={isOut}
-                        className={`min-w-[48px] h-10 px-2 border flex items-center justify-center text-sm font-medium transition-all ${isSelected
-                          ? 'border-black bg-black text-white'
-                          : 'border-gray-300 text-gray-900 hover:border-black'
-                          } ${isOut ? 'bg-gray-50 text-gray-400 cursor-not-allowed hover:border-gray-300' : ''}`}
+                        className={`relative min-w-[48px] h-10 px-2 border flex items-center justify-center text-sm font-medium transition-all ${sizeButtonClasses}`}
                         title={isOut ? 'Out of stock' : availability?.lowStock ? 'Low stock' : 'In stock'}
                       >
                         {size}
+                        {isOut ? (
+                          <span
+                            className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-rose-500"
+                            aria-hidden="true"
+                          />
+                        ) : null}
                       </button>
                     );
                   })}

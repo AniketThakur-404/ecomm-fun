@@ -31,7 +31,7 @@ const SearchPage = () => {
     setLoading(true);
     setError(null);
 
-    searchProducts(trimmedQuery, 24)
+    searchProducts(trimmedQuery, 60)
       .then((nodes) => {
         if (cancelled) return;
         const cards =

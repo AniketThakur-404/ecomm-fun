@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
-import { extractSizeOptions, findVariantForSize } from '../lib/api';
+import { extractSizeOptions, fetchProductByHandle, findVariantForSize } from '../lib/api';
 
 const getSizeOptions = (item) => extractSizeOptions(item);
 
@@ -20,12 +20,36 @@ const getSizeAvailability = (item, size) => {
 
 const SizeSelectionModal = ({ isOpen, onClose, items = [], onConfirm }) => {
     const [selections, setSelections] = useState({});
+    const selectionsRef = useRef({});
+    const [resolvedItems, setResolvedItems] = useState(items);
+    const [loadingItems, setLoadingItems] = useState(false);
 
     useEffect(() => {
-        if (isOpen) {
-            // Initialize selections for incoming items
+        if (!isOpen) return;
+
+        let cancelled = false;
+        const resolveItems = async () => {
+            setLoadingItems(true);
+            const hydratedItems = await Promise.all(
+                items.map(async (item) => {
+                    const sizes = getSizeOptions(item);
+                    if (sizes.length > 0 || !item?.handle) {
+                        return item;
+                    }
+                    try {
+                        const fullProduct = await fetchProductByHandle(item.handle);
+                        return fullProduct || item;
+                    } catch {
+                        return item;
+                    }
+                }),
+            );
+
+            if (cancelled) return;
+            setResolvedItems(hydratedItems);
+
             const initial = {};
-            items.forEach(item => {
+            hydratedItems.forEach((item) => {
                 const sizes = getSizeOptions(item);
                 if (sizes.length > 0) {
                     const firstInStock =
@@ -34,22 +58,41 @@ const SizeSelectionModal = ({ isOpen, onClose, items = [], onConfirm }) => {
                     initial[item.handle] = firstInStock;
                 }
             });
+            selectionsRef.current = initial;
             setSelections(initial);
-        }
+            setLoadingItems(false);
+        };
+
+        resolveItems();
+        return () => {
+            cancelled = true;
+        };
     }, [isOpen, items]);
 
     if (!isOpen) return null;
 
     const handleSelection = (handle, size) => {
+        selectionsRef.current = {
+            ...selectionsRef.current,
+            [handle]: size,
+        };
         setSelections(prev => ({ ...prev, [handle]: size }));
     };
 
     const handleConfirm = () => {
-        const finalItems = items.map(item => ({
-            handle: item.handle,
-            size: selections[item.handle] || null,
-            quantity: 1
-        }));
+        const finalItems = resolvedItems.map((item) => {
+            const sizes = getSizeOptions(item);
+            const hasSizes = sizes.length > 0;
+            const selected = selectionsRef.current[item.handle] || selections[item.handle];
+            const fallbackSize = hasSizes
+                ? (sizes.find((size) => getSizeAvailability(item, size).inStock) ?? sizes[0] ?? null)
+                : null;
+            return {
+                handle: item.handle,
+                size: selected || fallbackSize,
+                quantity: 1,
+            };
+        });
         onConfirm(finalItems);
     };
 
@@ -64,13 +107,13 @@ const SizeSelectionModal = ({ isOpen, onClose, items = [], onConfirm }) => {
                 </div>
 
                 <div className="p-4 max-h-[60vh] overflow-y-auto space-y-6">
-                    {items.map(item => {
+                    {resolvedItems.map(item => {
                         const sizes = getSizeOptions(item);
                         const hasSizes = sizes.length > 0;
                         const currentSize = selections[item.handle];
-                        const selectedAvailability = currentSize
-                            ? getSizeAvailability(item, currentSize)
-                            : null;
+                        const selectedAvailability = hasSizes
+                            ? (currentSize ? getSizeAvailability(item, currentSize) : null)
+                            : getSizeAvailability(item, null);
 
                         return (
                             <div key={item.handle} className="space-y-2">
@@ -81,18 +124,26 @@ const SizeSelectionModal = ({ isOpen, onClose, items = [], onConfirm }) => {
                                             const availability = getSizeAvailability(item, size);
                                             const isOut = !availability.inStock;
                                             const isSelected = currentSize === size;
+                                            const sizeButtonClasses = isOut
+                                                ? 'border-gray-300 bg-gray-100 text-gray-600 line-through cursor-not-allowed hover:border-gray-300'
+                                                : isSelected
+                                                    ? 'border-black bg-black text-white'
+                                                    : 'border-gray-200 text-gray-700 hover:border-black';
                                             return (
                                                 <button
                                                     key={size}
                                                     onClick={() => handleSelection(item.handle, size)}
                                                     disabled={isOut}
-                                                    className={`min-w-[40px] h-10 px-3 border rounded text-sm font-medium transition-all ${isSelected
-                                                        ? 'border-black bg-black text-white'
-                                                        : 'border-gray-200 text-gray-700 hover:border-black'
-                                                        } ${isOut ? 'bg-gray-50 text-gray-400 cursor-not-allowed hover:border-gray-200' : ''}`}
+                                                    className={`relative min-w-[40px] h-10 px-3 border rounded text-sm font-medium transition-all ${sizeButtonClasses}`}
                                                     title={isOut ? 'Out of stock' : availability.lowStock ? 'Low stock' : 'In stock'}
                                                 >
                                                     {size}
+                                                    {isOut ? (
+                                                        <span
+                                                            className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-rose-500"
+                                                            aria-hidden="true"
+                                                        />
+                                                    ) : null}
                                                 </button>
                                             );
                                         })}
@@ -114,6 +165,9 @@ const SizeSelectionModal = ({ isOpen, onClose, items = [], onConfirm }) => {
                             </div>
                         );
                     })}
+                    {loadingItems ? (
+                        <p className="text-xs text-gray-500">Loading size options...</p>
+                    ) : null}
                 </div>
 
                 <div className="p-4 border-t border-gray-100 bg-gray-50">

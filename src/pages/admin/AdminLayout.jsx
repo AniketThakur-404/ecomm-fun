@@ -7,6 +7,7 @@ import {
   Package,
   Layers,
   ShoppingBag,
+  BadgePercent,
   Star,
   Users,
   LogOut,
@@ -78,6 +79,10 @@ const AdminLayout = () => {
               <NavLink to="/admin/orders" className={navItemClass}>
                 <ShoppingBag className="w-5 h-5" />
                 <span>Orders</span>
+              </NavLink>
+              <NavLink to="/admin/discounts" className={navItemClass}>
+                <BadgePercent className="w-5 h-5" />
+                <span>Discounts</span>
               </NavLink>
               <NavLink to="/admin/reviews" className={navItemClass}>
                 <Star className="w-5 h-5" />

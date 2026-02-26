@@ -4,6 +4,9 @@ import { useNavigate } from 'react-router-dom';
 import { useCatalog } from '../contexts/catalog-context';
 import { formatMoney, getProductImageUrl, searchProducts } from '../lib/api';
 
+const POPULAR_PRODUCTS_LIMIT = 12;
+const SEARCH_RESULTS_LIMIT = 40;
+
 const SearchOverlay = ({ open, onClose }) => {
   const navigate = useNavigate();
   const inputRef = useRef(null);
@@ -12,7 +15,7 @@ const SearchOverlay = ({ open, onClose }) => {
 
   const popularProducts = useMemo(() => {
     return (catalogProducts ?? [])
-      .slice(0, 6)
+      .slice(0, POPULAR_PRODUCTS_LIMIT)
       .map((product) => ({
         title: product.title,
         price: formatMoney(product.price, product.currencyCode),
@@ -71,7 +74,7 @@ const SearchOverlay = ({ open, onClose }) => {
     let cancelled = false;
     setLoading(true);
 
-    searchProducts(term, 6)
+    searchProducts(term, SEARCH_RESULTS_LIMIT)
       .then((nodes) => {
         if (cancelled) return;
         const cards =
@@ -184,7 +187,7 @@ const SearchOverlay = ({ open, onClose }) => {
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[999] flex flex-col bg-white/90 backdrop-blur">
+    <div className="fixed inset-0 z-[999] overflow-y-auto bg-white/90 backdrop-blur">
       <div className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between border-b border-neutral-200 pb-4">
           <h2 className="text-xs uppercase tracking-[0.35em] text-neutral-500">Search</h2>
@@ -227,8 +230,15 @@ const SearchOverlay = ({ open, onClose }) => {
           </div>
 
           <div>
-            <p className="text-[11px] uppercase tracking-[0.3em] text-neutral-500">Products</p>
-            <div className="mt-4 space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-[11px] uppercase tracking-[0.3em] text-neutral-500">Products</p>
+              {!loading && productResults.length > 0 ? (
+                <p className="text-[10px] uppercase tracking-[0.25em] text-neutral-400">
+                  {productResults.length} items
+                </p>
+              ) : null}
+            </div>
+            <div className="mt-4 max-h-[58vh] space-y-3 overflow-y-auto pr-1">
               {loading ? (
                 <p className="text-sm uppercase tracking-[0.25em] text-neutral-500">
                   Searching for "{query}"...

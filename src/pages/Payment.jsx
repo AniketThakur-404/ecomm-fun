@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ArrowLeft,
+  BadgePercent,
   Banknote,
   CreditCard,
   Landmark,
@@ -13,6 +14,7 @@ import {
   createOrder,
   createRazorpayOrder,
   formatMoney,
+  verifyDiscountCode,
 } from '../lib/api';
 import { useAuth } from '../contexts/auth-context';
 import { useCart } from '../contexts/cart-context';
@@ -99,6 +101,9 @@ export default function Payment() {
   const [selectedPayment, setSelectedPayment] = useState('COD');
   const [placingOrder, setPlacingOrder] = useState(false);
   const [error, setError] = useState('');
+  const [discountCodeInput, setDiscountCodeInput] = useState('');
+  const [discountMessage, setDiscountMessage] = useState('');
+  const [discountLoading, setDiscountLoading] = useState(false);
 
   useEffect(() => {
     const currentDraft = getCheckoutDraft();
@@ -113,13 +118,39 @@ export default function Payment() {
 
     setDraft(currentDraft);
     setSelectedPayment(currentDraft.paymentMethod || 'COD');
+    setDiscountCodeInput(currentDraft?.appliedDiscount?.code || currentDraft?.totals?.discountCode || '');
+    setDiscountMessage('');
   }, [navigate]);
 
   useEffect(() => {
-    if (!draft) return;
-    const nextDraft = { ...draft, paymentMethod: selectedPayment };
-    setDraft(nextDraft);
-    setCheckoutDraft(nextDraft);
+    setDraft((prev) => {
+      if (!prev) return prev;
+      const currentSubtotal = Number(prev?.totals?.subtotal ?? 0);
+      const currentShippingFee = Number(prev?.totals?.shippingFee ?? 0);
+      const nextPaymentFee = Number(getPaymentMethodMeta(selectedPayment)?.fee || 0);
+      const activeDiscount = prev.appliedDiscount || null;
+      const activeDiscountAmount = Number(
+        activeDiscount?.amount ?? prev?.totals?.discountAmount ?? 0,
+      );
+      const nextTotal = Math.max(
+        currentSubtotal + currentShippingFee + nextPaymentFee - activeDiscountAmount,
+        0,
+      );
+      const nextDraft = {
+        ...prev,
+        paymentMethod: selectedPayment,
+        totals: {
+          ...prev.totals,
+          paymentFee: nextPaymentFee,
+          discountAmount: activeDiscountAmount,
+          discountCode: activeDiscount?.code || prev?.totals?.discountCode || null,
+          total: nextTotal,
+        },
+        updatedAt: new Date().toISOString(),
+      };
+      setCheckoutDraft(nextDraft);
+      return nextDraft;
+    });
   }, [selectedPayment]);
 
   const itemCount = useMemo(
@@ -132,7 +163,9 @@ export default function Payment() {
   const shippingFee = Number(draft?.totals?.shippingFee ?? 0);
   const selectedMethodMeta = getPaymentMethodMeta(selectedPayment);
   const paymentFee = Number(selectedMethodMeta?.fee || 0);
-  const finalTotal = subtotal + shippingFee + paymentFee;
+  const appliedDiscount = draft?.appliedDiscount || null;
+  const discountAmount = Number(appliedDiscount?.amount ?? draft?.totals?.discountAmount ?? 0);
+  const finalTotal = Math.max(subtotal + shippingFee + paymentFee - discountAmount, 0);
 
   const orderItems = useMemo(
     () =>
@@ -146,6 +179,83 @@ export default function Payment() {
       })),
     [currency, draft?.items],
   );
+
+  const persistDiscountInDraft = (nextDiscount) => {
+    if (!draft) return;
+    const normalizedDiscount =
+      nextDiscount && Number(nextDiscount.amount) > 0
+        ? {
+            id: nextDiscount.id || null,
+            code: String(nextDiscount.code || '').trim().toUpperCase(),
+            type: nextDiscount.type || null,
+            value: Number(nextDiscount.value || 0),
+            amount: Number(nextDiscount.amount || 0),
+            name: nextDiscount.name || null,
+          }
+        : null;
+
+    const nextDiscountAmount = Number(normalizedDiscount?.amount || 0);
+    const nextTotal = Math.max(subtotal + shippingFee + paymentFee - nextDiscountAmount, 0);
+
+    const nextDraft = {
+      ...draft,
+      appliedDiscount: normalizedDiscount,
+      totals: {
+        ...draft.totals,
+        paymentFee,
+        discountAmount: nextDiscountAmount,
+        discountCode: normalizedDiscount?.code || null,
+        total: nextTotal,
+      },
+      updatedAt: new Date().toISOString(),
+    };
+
+    setDraft(nextDraft);
+    setCheckoutDraft(nextDraft);
+  };
+
+  const handleApplyDiscount = async () => {
+    if (!draft || discountLoading) return;
+    const code = String(discountCodeInput || '').trim().toUpperCase();
+    if (!code) {
+      setDiscountMessage('Enter a discount code.');
+      return;
+    }
+
+    try {
+      setDiscountLoading(true);
+      setDiscountMessage('');
+      const verified = await verifyDiscountCode({
+        code,
+        subtotal,
+        currency,
+      });
+
+      persistDiscountInDraft({
+        id: verified?.id || null,
+        code: verified?.code || code,
+        type: verified?.type || null,
+        value: Number(verified?.value || 0),
+        amount: Number(verified?.amount || 0),
+        name: verified?.name || null,
+      });
+
+      setDiscountCodeInput(verified?.code || code);
+      setDiscountMessage(`Applied ${verified?.code || code} successfully.`);
+      setError('');
+    } catch (err) {
+      setDiscountMessage(err?.message || 'Unable to apply this code.');
+    } finally {
+      setDiscountLoading(false);
+    }
+  };
+
+  const handleRemoveDiscount = () => {
+    if (!draft) return;
+    persistDiscountInDraft(null);
+    setDiscountCodeInput('');
+    setDiscountMessage('Discount removed.');
+  };
 
   const handlePlaceOrder = async () => {
     if (!draft?.items?.length || placingOrder) {
@@ -184,11 +294,20 @@ export default function Payment() {
         totals: {
           subtotal,
           shippingFee,
+          paymentFee,
+          discountAmount,
+          discountCode: appliedDiscount?.code || null,
           total: finalTotal,
           currency,
         },
         shipping: draft.shipping,
         items: orderItems,
+        discount: appliedDiscount?.code
+          ? {
+              id: appliedDiscount.id || undefined,
+              code: appliedDiscount.code,
+            }
+          : undefined,
       };
 
       let createdOrder = null;
@@ -201,12 +320,12 @@ export default function Payment() {
         }
 
         const razorpayOrderPayload = await createRazorpayOrder(token, {
-          amount: Math.round(finalTotal * 100),
-          currency,
+          order: payload,
           receipt: `rcpt_${Date.now()}`,
           notes: {
             customerEmail: draft?.shipping?.email || '',
             customerPhone: draft?.shipping?.phone || '',
+            discountCode: appliedDiscount?.code || '',
           },
         });
 
@@ -336,6 +455,54 @@ export default function Payment() {
           </Link>
         </section>
 
+        <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+          <div className="mb-3 flex items-center gap-2">
+            <BadgePercent className="h-4 w-4 text-gray-700" />
+            <p className="text-sm font-semibold text-[var(--color-text-main)]">Apply Discount Code</p>
+          </div>
+          <div className="flex gap-2">
+            <input
+              value={discountCodeInput}
+              onChange={(event) => setDiscountCodeInput(event.target.value.toUpperCase())}
+              placeholder="Enter code"
+              className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-black focus:outline-none"
+            />
+            <button
+              type="button"
+              onClick={handleApplyDiscount}
+              disabled={discountLoading || !discountCodeInput.trim()}
+              className="rounded-lg border border-black px-4 py-2 text-xs font-bold uppercase tracking-wide text-black hover:bg-black hover:text-white disabled:cursor-not-allowed disabled:border-gray-300 disabled:text-gray-400"
+            >
+              {discountLoading ? 'Applying...' : 'Apply'}
+            </button>
+          </div>
+
+          {appliedDiscount?.code ? (
+            <div className="mt-3 flex items-center justify-between rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+              <span>
+                {appliedDiscount.code} applied ({formatMoney(discountAmount, currency)} off)
+              </span>
+              <button
+                type="button"
+                onClick={handleRemoveDiscount}
+                className="text-xs font-semibold underline"
+              >
+                Remove
+              </button>
+            </div>
+          ) : null}
+
+          {discountMessage ? (
+            <p
+              className={`mt-2 text-xs ${
+                appliedDiscount?.code ? 'text-emerald-600' : 'text-rose-600'
+              }`}
+            >
+              {discountMessage}
+            </p>
+          ) : null}
+        </section>
+
         <section className="rounded-2xl border border-gray-200 bg-white shadow-sm">
           <div className="border-b border-gray-100 px-4 py-3">
             <p className="text-xs font-bold uppercase tracking-[0.2em] text-gray-500">Select payment method</p>
@@ -400,6 +567,15 @@ export default function Payment() {
               <span>{selectedMethodMeta.label} fee</span>
               <span>{paymentFee > 0 ? formatMoney(paymentFee, currency) : formatMoney(0, currency)}</span>
             </div>
+            {discountAmount > 0 ? (
+              <div className="flex justify-between text-emerald-700">
+                <span>
+                  Discount
+                  {appliedDiscount?.code ? ` (${appliedDiscount.code})` : ''}
+                </span>
+                <span>-{formatMoney(discountAmount, currency)}</span>
+              </div>
+            ) : null}
             <div className="border-t border-gray-200 pt-2">
               <div className="flex justify-between text-base font-bold text-[var(--color-text-main)]">
                 <span>Total</span>

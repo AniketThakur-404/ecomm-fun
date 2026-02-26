@@ -211,11 +211,26 @@ const SIZE_OPTION_TOKENS = [
   'shoe',
   'foot',
 ];
+const SIZE_PLACEHOLDER_TOKENS = new Set([
+  'default',
+  'default title',
+  'title',
+  'n/a',
+  'na',
+  '-',
+  '--',
+]);
 
 export const isSizeOptionName = (name) => {
   const token = normaliseTokenValue(name);
   if (!token) return false;
   return SIZE_OPTION_TOKENS.some((part) => token.includes(part));
+};
+
+const isPlaceholderSizeValue = (value) => {
+  const token = normaliseTokenValue(value);
+  if (!token) return true;
+  return SIZE_PLACEHOLDER_TOKENS.has(token);
 };
 
 const normalizeImage = (image, fallbackAlt = '') => {
@@ -489,11 +504,57 @@ export const extractOptionValues = (product, optionName) => {
 };
 
 export const extractSizeOptions = (product) => {
-  if (!product?.options?.length) return [];
-  const exact = extractOptionValues(product, 'Size');
+  const options = Array.isArray(product?.options) ? product.options : [];
+  const normalizeOptionsList = (values) => {
+    const seen = new Set();
+    return (Array.isArray(values) ? values : [])
+      .map((value) => String(value || '').trim())
+      .filter(Boolean)
+      .filter((value) => !isPlaceholderSizeValue(value))
+      .filter((value) => {
+        const token = normaliseTokenValue(value);
+        if (!token || seen.has(token)) return false;
+        seen.add(token);
+        return true;
+      });
+  };
+
+  const exact = normalizeOptionsList(extractOptionValues(product, 'Size'));
   if (exact.length) return exact;
-  const match = product.options.find((opt) => isSizeOptionName(opt?.name));
-  return match?.values ?? [];
+
+  const namedOption = options.find((opt) => isSizeOptionName(opt?.name));
+  const fromNamedOption = normalizeOptionsList(namedOption?.values || []);
+  if (fromNamedOption.length) return fromNamedOption;
+
+  const variants = Array.isArray(product?.variants) ? product.variants : [];
+  const fromVariantOptions = normalizeOptionsList(
+    variants.flatMap((variant) =>
+      Array.isArray(variant?.selectedOptions)
+        ? variant.selectedOptions
+          .filter((option) => isSizeOptionName(option?.name))
+          .map((option) => option?.value)
+        : [],
+    ),
+  );
+  if (fromVariantOptions.length) return fromVariantOptions;
+
+  const fromOptionValues = normalizeOptionsList(
+    variants.flatMap((variant) => {
+      const values = variant?.optionValues;
+      if (!values || typeof values !== 'object') return [];
+      return Object.entries(values)
+        .filter(([name]) => isSizeOptionName(name))
+        .map(([, value]) => value);
+    }),
+  );
+  if (fromOptionValues.length) return fromOptionValues;
+
+  // Last fallback for malformed imports where only variant title has size.
+  return normalizeOptionsList(
+    variants
+      .map((variant) => String(variant?.title || '').trim())
+      .filter((value) => value && !value.includes('/')),
+  );
 };
 
 export function findVariantForSize(product, size) {
@@ -537,8 +598,14 @@ export function toProductCard(product) {
   if (!product) return null;
   const image =
     product.featuredImage?.url ?? product.images?.[0]?.url ?? undefined;
-  const secondaryImage =
-    product.images?.find((img) => img?.url && img.url !== image)?.url ?? null;
+  const imageList = Array.from(
+    new Set(
+      [image, ...(product.images || []).map((img) => img?.url)]
+        .map((url) => (url ? String(url).trim() : ''))
+        .filter(Boolean),
+    ),
+  );
+  const secondaryImage = imageList.find((url) => url !== image) ?? null;
   const currency = product.currencyCode || DEFAULT_CURRENCY;
   return {
     title: product.title,
@@ -546,6 +613,7 @@ export function toProductCard(product) {
     vendor: product.vendor,
     price: formatMoney(product.price, currency),
     img: image,
+    images: imageList,
     hoverImg: secondaryImage,
     badge: product.tags?.includes('new') ? 'New' : undefined,
     href: `/product/${product.handle}`,
@@ -756,6 +824,14 @@ export const confirmRazorpayCheckout = async (token, data) =>
     }),
   );
 
+export const verifyDiscountCode = async ({ code, subtotal, currency }) =>
+  unwrap(
+    await request('/discounts/verify', {
+      method: 'POST',
+      body: { code, subtotal, currency },
+    }),
+  );
+
 export const trackOrder = async ({ orderId, email, phone }) => {
   const payload = await request('/orders/track', {
     method: 'POST',
@@ -841,6 +917,34 @@ export const adminUpdateOrder = async (token, orderId, data) =>
     await requestWithAuth(`/orders/${encodeURIComponent(orderId)}`, token, {
       method: 'PATCH',
       body: data,
+    }),
+  );
+
+export const adminFetchDiscounts = async (token) => {
+  const payload = await requestWithAuth('/discounts', token);
+  return unwrap(payload) || [];
+};
+
+export const adminCreateDiscount = async (token, data) =>
+  unwrap(
+    await requestWithAuth('/discounts', token, {
+      method: 'POST',
+      body: data,
+    }),
+  );
+
+export const adminUpdateDiscount = async (token, id, data) =>
+  unwrap(
+    await requestWithAuth(`/discounts/${encodeURIComponent(id)}`, token, {
+      method: 'PATCH',
+      body: data,
+    }),
+  );
+
+export const adminDeleteDiscount = async (token, id) =>
+  unwrap(
+    await requestWithAuth(`/discounts/${encodeURIComponent(id)}`, token, {
+      method: 'DELETE',
     }),
   );
 
