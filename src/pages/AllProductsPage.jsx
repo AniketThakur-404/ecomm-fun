@@ -578,7 +578,7 @@ const AllProductsPage = ({ initialCategory = 'all' }) => {
             <div className="col-span-full text-center py-20 text-gray-500">No products found for this occasion.</div>
           )
         ) : (
-          <div className="grid grid-cols-2 gap-x-3 gap-y-6 sm:gap-x-4 sm:gap-y-8 md:grid-cols-3 lg:grid-cols-5 lg:gap-x-6 lg:gap-y-10">
+          <div className="grid grid-cols-2 gap-x-3 gap-y-6 sm:gap-x-4 sm:gap-y-8 md:grid-cols-3 lg:grid-cols-5 lg:gap-x-2 lg:gap-y-2">
             {sortedProducts.length > 0 ? (
               sortedProducts.map((product, index) => (
                 <ProductCard key={product.handle || product.id || index} item={product} />
